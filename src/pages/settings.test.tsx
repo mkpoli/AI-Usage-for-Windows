@@ -47,7 +47,7 @@ const defaultProps = {
   plugins: [{ id: "a", name: "Alpha", enabled: true }],
   onReorder: vi.fn(),
   onToggle: vi.fn(),
-  autoUpdateInterval: 5 as const,
+  autoUpdateInterval: 1 as const,
   onAutoUpdateIntervalChange: vi.fn(),
   themeMode: "system" as const,
   onThemeModeChange: vi.fn(),

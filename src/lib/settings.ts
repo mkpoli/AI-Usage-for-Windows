@@ -10,7 +10,7 @@ export type PluginSettings = {
   disabled: string[];
 };
 
-export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
+export type AutoUpdateIntervalMinutes = 1 | 5 | 10 | 30;
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -37,7 +37,7 @@ const MOBILE_SYNC_DEVICE_ID_KEY = "mobileSyncDeviceId";
 const MOBILE_SYNC_DEVICE_NAME_KEY = "mobileSyncDeviceName";
 const MOBILE_SYNC_GOOGLE_DESKTOP_CLIENT_ID_KEY = "mobileSyncGoogleDesktopClientId";
 
-export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 5;
+export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 1;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
@@ -50,7 +50,7 @@ export type MobileSyncOAuthConfig = {
   googleDesktopClientId: string | null;
 };
 
-const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
+const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [1, 5, 10, 30];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
@@ -63,7 +63,7 @@ export const MENUBAR_ICON_STYLE_OPTIONS: { value: MenubarIconStyle; label: strin
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
   AUTO_UPDATE_INTERVALS.map((value) => ({
     value,
-    label: value === 60 ? "1 hour" : `${value} min`,
+    label: `${value} min`,
   }));
 
 export const THEME_OPTIONS: { value: ThemeMode; label: string }[] =

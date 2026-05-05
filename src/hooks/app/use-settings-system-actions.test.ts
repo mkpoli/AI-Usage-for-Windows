@@ -69,13 +69,13 @@ describe("useSettingsSystemActions", () => {
     )
 
     act(() => {
-      result.current.handleAutoUpdateIntervalChange(15)
+      result.current.handleAutoUpdateIntervalChange(10)
     })
 
-    expect(trackMock).toHaveBeenCalledWith("setting_changed", { setting: "auto_refresh", value: "15" })
-    expect(setAutoUpdateInterval).toHaveBeenCalledWith(15)
-    expect(setAutoUpdateNextAt).toHaveBeenCalledWith(910_000)
-    expect(saveAutoUpdateIntervalMock).toHaveBeenCalledWith(15)
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", { setting: "auto_refresh", value: "10" })
+    expect(setAutoUpdateInterval).toHaveBeenCalledWith(10)
+    expect(setAutoUpdateNextAt).toHaveBeenCalledWith(610_000)
+    expect(saveAutoUpdateIntervalMock).toHaveBeenCalledWith(10)
     nowSpy.mockRestore()
   })
 
