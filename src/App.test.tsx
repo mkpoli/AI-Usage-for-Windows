@@ -65,8 +65,6 @@ const firebaseState = vi.hoisted(() => ({
   initializeFirebaseAuthFlowMock: vi.fn(),
   watchFirebaseUserMock: vi.fn(),
   signInWithGoogleMock: vi.fn(),
-  signInWithGithubMock: vi.fn(),
-  startGithubBrowserSignInMock: vi.fn(),
   completeNativeBrowserSignInMock: vi.fn(),
   signInWithNativeTokensMock: vi.fn(),
   signOutFirebaseMock: vi.fn(),
@@ -229,8 +227,6 @@ vi.mock("@/lib/firebase", () => ({
   initializeFirebaseAuthFlow: firebaseState.initializeFirebaseAuthFlowMock,
   watchFirebaseUser: firebaseState.watchFirebaseUserMock,
   signInWithGoogle: firebaseState.signInWithGoogleMock,
-  signInWithGithub: firebaseState.signInWithGithubMock,
-  startGithubBrowserSignIn: firebaseState.startGithubBrowserSignInMock,
   completeNativeBrowserSignIn: firebaseState.completeNativeBrowserSignInMock,
   signInWithNativeTokens: firebaseState.signInWithNativeTokensMock,
   signOutFirebase: firebaseState.signOutFirebaseMock,
@@ -348,8 +344,6 @@ describe("App", () => {
     firebaseState.initializeFirebaseAuthFlowMock.mockReset()
     firebaseState.watchFirebaseUserMock.mockReset()
     firebaseState.signInWithGoogleMock.mockReset()
-    firebaseState.signInWithGithubMock.mockReset()
-    firebaseState.startGithubBrowserSignInMock.mockReset()
     firebaseState.completeNativeBrowserSignInMock.mockReset()
     firebaseState.signInWithNativeTokensMock.mockReset()
     firebaseState.signOutFirebaseMock.mockReset()
@@ -382,28 +376,13 @@ describe("App", () => {
       enabled: true,
       missingKeys: [],
       googleClientConfigured: true,
-      githubClientConfigured: false,
     })
     firebaseState.initializeFirebaseAuthFlowMock.mockResolvedValue(null)
     firebaseState.watchFirebaseUserMock.mockImplementation(() => () => undefined)
     firebaseState.signInWithGoogleMock.mockResolvedValue(undefined)
-    firebaseState.signInWithGithubMock.mockResolvedValue(undefined)
-    firebaseState.startGithubBrowserSignInMock.mockResolvedValue({
-      kind: "device_code",
-      providerId: "github.com",
-      providerLabel: "GitHub",
-      clientId: "github-client",
-      sessionId: "github-session",
-      verificationUri: "https://github.com/login/device",
-      userCode: "ABCD-1234",
-      codeCopiedToClipboard: true,
-      pollIntervalSecs: 1,
-      expiresInSecs: 900,
-      startedAt: Date.now(),
-    })
     firebaseState.completeNativeBrowserSignInMock.mockResolvedValue({
-      providerId: "github.com",
-      accessToken: "github-access-token",
+      providerId: "google.com",
+      accessToken: "google-access-token",
       idToken: null,
     })
     firebaseState.signInWithNativeTokensMock.mockResolvedValue(undefined)
@@ -429,7 +408,6 @@ describe("App", () => {
     state.saveMobileSyncDeviceNameMock.mockResolvedValue(undefined)
     state.loadMobileSyncOAuthConfigMock.mockResolvedValue({
       googleDesktopClientId: null,
-      githubClientId: null,
     })
     state.saveMobileSyncOAuthConfigMock.mockResolvedValue(undefined)
     state.autostartEnableMock.mockResolvedValue(undefined)
@@ -863,25 +841,6 @@ describe("App", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
 
     await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("hide_panel"))
-  })
-
-  it("shows the panel again after GitHub Mobile Sync sign-in completes", async () => {
-    state.isTauriMock.mockReturnValue(true)
-    firebaseState.getFirebaseRuntimeStateMock.mockReturnValue({
-      enabled: true,
-      missingKeys: [],
-      googleClientConfigured: true,
-      githubClientConfigured: true,
-    })
-
-    render(<App />)
-    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
-    await userEvent.click(settingsButtons[0])
-
-    await userEvent.click(await screen.findByRole("button", { name: "Sign In with GitHub" }))
-
-    await waitFor(() => expect(firebaseState.signInWithNativeTokensMock).toHaveBeenCalled())
-    await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("show_panel"))
   })
 
   it("toggles plugins in settings", async () => {

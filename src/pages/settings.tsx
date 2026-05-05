@@ -125,7 +125,6 @@ interface SettingsPageProps {
   mobileSyncError: string | null;
   mobileSyncPendingDeviceCodeAuth: NativeFirebasePendingAuthSession | null;
   onMobileSyncGoogleSignIn: () => Promise<void> | void;
-  onMobileSyncGithubSignIn: () => Promise<void> | void;
   onMobileSyncSyncNow: () => Promise<void> | void;
   onMobileSyncSignOut: () => Promise<void> | void;
   onMobileSyncSaveDeviceName: (deviceName: string) => Promise<void> | void;
@@ -152,7 +151,6 @@ export function SettingsPage({
   mobileSyncError,
   mobileSyncPendingDeviceCodeAuth,
   onMobileSyncGoogleSignIn,
-  onMobileSyncGithubSignIn,
   onMobileSyncSyncNow,
   onMobileSyncSignOut,
   onMobileSyncSaveDeviceName,
@@ -353,19 +351,13 @@ export function SettingsPage({
             </div>
           )}
 
-          {mobileSyncStatus?.isConfigured &&
-          (!mobileSyncStatus.googleSignInAvailable || !mobileSyncStatus.githubSignInAvailable) ? (
+          {mobileSyncStatus?.isConfigured && !mobileSyncStatus.googleSignInAvailable ? (
             <div className="space-y-1">
               <p className="text-sm text-amber-600 dark:text-amber-400">
-                Native OAuth provider settings are missing for one or more sign-in providers.
+                Google sign-in settings are missing.
               </p>
               <p className="text-xs text-muted-foreground">
-                {!mobileSyncStatus.googleSignInAvailable
-                  ? "Google requires VITE_GOOGLE_DESKTOP_CLIENT_ID and VITE_GOOGLE_DESKTOP_CLIENT_SECRET. "
-                  : ""}
-                {!mobileSyncStatus.githubSignInAvailable
-                  ? "GitHub requires VITE_GITHUB_OAUTH_CLIENT_ID."
-                  : ""}
+                Google requires VITE_GOOGLE_DESKTOP_CLIENT_ID and VITE_GOOGLE_DESKTOP_CLIENT_SECRET.
               </p>
               {mobileSyncStatus.missingOAuthKeys?.length ? (
                 <p className="text-xs text-muted-foreground">
@@ -452,44 +444,18 @@ export function SettingsPage({
                   <p className="text-sm font-medium">
                     Finish {mobileSyncPendingDeviceCodeAuth.providerLabel} sign-in in your browser
                   </p>
-                  {mobileSyncPendingDeviceCodeAuth.kind === "device_code" ? (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        Enter the verification code below in your browser, then return here.
-                      </p>
-                      {mobileSyncPendingDeviceCodeAuth.codeCopiedToClipboard ? (
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                          Verification code copied to clipboard.
-                        </p>
-                      ) : null}
-                      <div className="rounded-md border border-dashed bg-muted px-3 py-2 text-center text-lg font-semibold tracking-[0.2em]">
-                        {mobileSyncPendingDeviceCodeAuth.userCode}
-                      </div>
-                      <a
-                        href={mobileSyncPendingDeviceCodeAuth.verificationUri}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-primary underline underline-offset-4"
-                      >
-                        Open verification page
-                      </a>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        Complete the sign-in page in your browser. The app will continue
-                        automatically after the browser redirects back to this Windows device.
-                      </p>
-                      <a
-                        href={mobileSyncPendingDeviceCodeAuth.authorizationUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-primary underline underline-offset-4"
-                      >
-                        Reopen sign-in page
-                      </a>
-                    </>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Complete the sign-in page in your browser. The app will continue
+                    automatically after the browser redirects back to this Windows device.
+                  </p>
+                  <a
+                    href={mobileSyncPendingDeviceCodeAuth.authorizationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary underline underline-offset-4"
+                  >
+                    Reopen sign-in page
+                  </a>
                 </div>
               ) : null}
               <div className="flex flex-wrap gap-2">
@@ -500,15 +466,6 @@ export function SettingsPage({
                   disabled={mobileSyncBusy || !mobileSyncStatus?.googleSignInAvailable}
                 >
                   {mobileSyncBusy ? "Signing in..." : "Sign In with Google"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onMobileSyncGithubSignIn()}
-                  disabled={mobileSyncBusy || !mobileSyncStatus?.githubSignInAvailable}
-                >
-                  {mobileSyncBusy ? "Signing in..." : "Sign In with GitHub"}
                 </Button>
               </div>
             </div>

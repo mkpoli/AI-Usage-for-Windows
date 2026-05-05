@@ -20,15 +20,6 @@ class MockGoogleAuthProvider {
   setCustomParameters = vi.fn()
 }
 
-class MockGithubAuthProvider {
-  static credential = vi.fn((accessToken) => ({
-    providerId: "github.com",
-    accessToken,
-  }))
-  addScope = vi.fn()
-  setCustomParameters = vi.fn()
-}
-
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: state.invokeMock,
 }))
@@ -45,7 +36,6 @@ vi.mock("firebase/auth", () => ({
   browserLocalPersistence: { id: "browserLocalPersistence" },
   getAuth: state.getAuthMock,
   GoogleAuthProvider: MockGoogleAuthProvider,
-  GithubAuthProvider: MockGithubAuthProvider,
   signInWithCredential: state.signInWithCredentialMock,
   setPersistence: state.setPersistenceMock,
   onAuthStateChanged: state.onAuthStateChangedMock,
@@ -71,7 +61,6 @@ describe("firebase auth helpers", () => {
     vi.stubEnv("VITE_FIREBASE_APP_ID", "firebase-app-id")
     vi.stubEnv("VITE_GOOGLE_DESKTOP_CLIENT_ID", "google-desktop-client-id")
     vi.stubEnv("VITE_GOOGLE_DESKTOP_CLIENT_SECRET", "google-desktop-client-secret")
-    vi.stubEnv("VITE_GITHUB_OAUTH_CLIENT_ID", "github-client-id")
 
     state.initializeAppMock.mockReturnValue({ id: "app" })
     state.getAuthMock.mockReturnValue({ id: "auth" })
@@ -107,29 +96,6 @@ describe("firebase auth helpers", () => {
     })
   })
 
-  it("starts GitHub sign-in through device OAuth", async () => {
-    state.invokeMock.mockResolvedValue({
-      flow: "device_code",
-      providerId: "github.com",
-      sessionId: "session_github",
-      verificationUri: "https://github.com/login/device",
-      userCode: "ABCD-1234",
-      pollIntervalSecs: 5,
-      expiresInSecs: 900,
-    })
-
-    const { startGithubBrowserSignIn } = await import("@/lib/firebase")
-    await expect(startGithubBrowserSignIn()).resolves.toMatchObject({
-      kind: "device_code",
-      providerId: "github.com",
-      sessionId: "session_github",
-    })
-
-    expect(state.invokeMock).toHaveBeenCalledWith("firebase_start_github_loopback_sign_in", {
-      clientId: "github-client-id",
-    })
-  })
-
   it("signs in to Firebase with native Google tokens", async () => {
     const { signInWithNativeTokens } = await import("@/lib/firebase")
     await expect(
@@ -155,7 +121,6 @@ describe("firebase auth helpers", () => {
     expect(getFirebaseRuntimeState()).toMatchObject({
       enabled: true,
       googleClientConfigured: true,
-      githubClientConfigured: true,
     })
   })
 })

@@ -8,7 +8,6 @@ import {
   hydrateFirebaseAuthRuntimeConfig,
   initializeFirebaseAuthFlow,
   signInWithNativeTokens,
-  startGithubBrowserSignIn,
   startGoogleBrowserSignIn,
   signOutFirebase,
   watchFirebaseUser,
@@ -255,29 +254,6 @@ export function useMobileSync({
     }
   }, [])
 
-  const handleGithubSignIn = useCallback(async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const session = await startGithubBrowserSignIn()
-      setPendingBrowserAuth(session)
-      authAbortControllerRef.current?.abort()
-      const controller = new AbortController()
-      authAbortControllerRef.current = controller
-      const tokens = await completeNativeBrowserSignIn(session, controller.signal)
-      await signInWithNativeTokens(tokens)
-      showPanelAfterBrowserSignIn()
-    } catch (signInError) {
-      console.error("Failed to sign in with GitHub:", signInError)
-      setError(formatErrorMessage(signInError, "Failed to sign in with GitHub"))
-      throw signInError
-    } finally {
-      authAbortControllerRef.current = null
-      setPendingBrowserAuth(null)
-      setBusy(false)
-    }
-  }, [])
-
   const handleSyncNow = useCallback(async () => {
     if (!currentUser) {
       const missingAuthError = new Error("Sign in before syncing with mobile")
@@ -363,11 +339,11 @@ export function useMobileSync({
   )
 
   const handleOAuthSettingsSave = useCallback(
-    async (googleDesktopClientId: string, githubClientId: string) => {
+    async (googleDesktopClientId: string) => {
       setBusy(true)
       setError(null)
       try {
-        const oauthConfig = { googleDesktopClientId, githubClientId }
+        const oauthConfig = { googleDesktopClientId }
         await saveMobileSyncOAuthConfig(oauthConfig)
         hydrateFirebaseAuthRuntimeConfig(oauthConfig)
         const nextStatus = await getInitialMobileSyncStatus()
@@ -378,9 +354,7 @@ export function useMobileSync({
                 isConfigured: nextStatus.isConfigured,
                 missingConfigKeys: nextStatus.missingConfigKeys,
                 googleSignInAvailable: nextStatus.googleSignInAvailable,
-                githubSignInAvailable: nextStatus.githubSignInAvailable,
                 googleDesktopClientId: nextStatus.googleDesktopClientId,
-                githubClientId: nextStatus.githubClientId,
               }
             : nextStatus
         )
@@ -444,7 +418,6 @@ export function useMobileSync({
     mobileSyncError: error,
     mobileSyncPendingDeviceCodeAuth: pendingBrowserAuth,
     handleMobileSyncGoogleSignIn: handleGoogleSignIn,
-    handleMobileSyncGithubSignIn: handleGithubSignIn,
     handleMobileSyncSyncNow: handleSyncNow,
     handleMobileSyncSignOut: handleSignOut,
     handleMobileSyncSaveDeviceName: handleDeviceNameSave,

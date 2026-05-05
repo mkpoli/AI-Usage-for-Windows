@@ -35,9 +35,7 @@ export type MobileSyncStatus = {
   missingConfigKeys: string[]
   missingOAuthKeys: string[]
   googleSignInAvailable: boolean
-  githubSignInAvailable: boolean
   googleDesktopClientId: string
-  githubClientId: string
   isAuthenticated: boolean
   account: MobileSyncAccount | null
   deviceId: string | null
@@ -113,17 +111,14 @@ function stripUndefinedObjectForFirestore(value: Record<string, unknown>): Recor
 
 function makeDefaultStatus(oauthConfig?: {
   googleDesktopClientId: string | null
-  githubClientId: string | null
 }): MobileSyncStatus {
   const runtime = getFirebaseRuntimeState()
-    return {
-      isConfigured: runtime.enabled,
-      missingConfigKeys: runtime.missingKeys,
-      missingOAuthKeys: runtime.missingOAuthKeys,
-      googleSignInAvailable: runtime.enabled && runtime.googleClientConfigured,
-    githubSignInAvailable: runtime.enabled && runtime.githubClientConfigured,
+  return {
+    isConfigured: runtime.enabled,
+    missingConfigKeys: runtime.missingKeys,
+    missingOAuthKeys: runtime.missingOAuthKeys,
+    googleSignInAvailable: runtime.enabled && runtime.googleClientConfigured,
     googleDesktopClientId: oauthConfig?.googleDesktopClientId ?? "",
-    githubClientId: oauthConfig?.githubClientId ?? "",
     isAuthenticated: false,
     account: null,
     deviceId: null,
@@ -455,7 +450,6 @@ export function buildAuthenticatedMobileSyncStatus(
     missingConfigKeys: runtime.missingKeys,
     missingOAuthKeys: runtime.missingOAuthKeys,
     googleSignInAvailable: runtime.enabled && runtime.googleClientConfigured,
-    githubSignInAvailable: runtime.enabled && runtime.githubClientConfigured,
     isAuthenticated: true,
     account: mapAccount(user),
     deviceId: ensuredDevice.deviceId,

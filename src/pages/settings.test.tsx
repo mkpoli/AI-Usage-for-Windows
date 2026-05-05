@@ -63,8 +63,9 @@ const defaultProps = {
   mobileSyncStatus: {
     isConfigured: true,
     missingConfigKeys: [],
+    missingOAuthKeys: [],
     googleSignInAvailable: true,
-    githubSignInAvailable: true,
+    googleDesktopClientId: "",
     isAuthenticated: false,
     account: null,
     deviceId: "dev_test",
@@ -78,8 +79,8 @@ const defaultProps = {
   },
   mobileSyncBusy: false,
   mobileSyncError: null,
+  mobileSyncPendingDeviceCodeAuth: null,
   onMobileSyncGoogleSignIn: vi.fn(),
-  onMobileSyncGithubSignIn: vi.fn(),
   onMobileSyncSyncNow: vi.fn(),
   onMobileSyncSignOut: vi.fn(),
   onMobileSyncSaveDeviceName: vi.fn(),
@@ -239,26 +240,23 @@ describe("SettingsPage", () => {
     expect(screen.queryByLabelText("GitHub OAuth Client ID")).not.toBeInTheDocument()
     expect(screen.getByText(/Sign in with the same Firebase account used on Android/i)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Sign In with Google" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Sign In with GitHub" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Sign In with GitHub" })).not.toBeInTheDocument()
   })
 
-  it("disables provider sign-in buttons when Firebase provider settings are missing", () => {
+  it("disables Google sign-in when Firebase provider settings are missing", () => {
     render(
       <SettingsPage
         {...defaultProps}
         mobileSyncStatus={{
           ...defaultProps.mobileSyncStatus,
           googleSignInAvailable: false,
-          githubSignInAvailable: true,
         }}
       />
     )
 
     expect(screen.getByRole("button", { name: "Sign In with Google" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Sign In with GitHub" })).toBeEnabled()
-    expect(screen.getByText(/Native OAuth provider settings are missing/i)).toBeInTheDocument()
+    expect(screen.getByText(/Google sign-in settings are missing/i)).toBeInTheDocument()
     expect(screen.getByText(/Google requires VITE_GOOGLE_DESKTOP_CLIENT_ID/i)).toBeInTheDocument()
-    expect(screen.queryByText(/GitHub requires VITE_GITHUB_OAUTH_CLIENT_ID/i)).not.toBeInTheDocument()
   })
 
   it("renders device sync controls when signed in", () => {

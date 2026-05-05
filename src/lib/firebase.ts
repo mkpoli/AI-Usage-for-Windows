@@ -2,7 +2,6 @@ import { initializeApp, type FirebaseApp } from "firebase/app"
 import {
   browserLocalPersistence,
   getAuth,
-  GithubAuthProvider,
   GoogleAuthProvider,
   onAuthStateChanged,
   setPersistence,
@@ -29,7 +28,6 @@ export type FirebaseRuntimeState = {
   enabled: boolean
   missingKeys: string[]
   googleClientConfigured: boolean
-  githubClientConfigured: boolean
   missingOAuthKeys: string[]
 }
 
@@ -46,42 +44,25 @@ type NativeFirebaseOAuthTokens = {
 }
 
 export type NativeFirebasePendingAuthSession =
-  | {
-      kind: "loopback"
-      providerId: "google.com"
-      providerLabel: "Google"
-      clientId: string
-      sessionId: string
-      authorizationUrl: string
-      callbackUrl: string
-      expiresInSecs: number
-      startedAt: number
-    }
-  | {
-      kind: "device_code"
-      providerId: "github.com"
-      providerLabel: "GitHub"
-      clientId: string
-      sessionId: string
-      verificationUri: string
-      userCode: string
-      codeCopiedToClipboard: boolean
-      pollIntervalSecs: number
-      expiresInSecs: number
-      startedAt: number
-    }
+  {
+    kind: "loopback"
+    providerId: "google.com"
+    providerLabel: "Google"
+    clientId: string
+    sessionId: string
+    authorizationUrl: string
+    callbackUrl: string
+    expiresInSecs: number
+    startedAt: number
+  }
 
 type NativeFirebaseLoopbackStart = {
-  providerId: "google.com" | "github.com"
+  providerId: "google.com"
   sessionId: string
-  flow: "loopback" | "device_code"
+  flow: "loopback"
   authorizationUrl?: string | null
   callbackUrl?: string | null
-  verificationUri?: string | null
-  userCode?: string | null
-  codeCopiedToClipboard?: boolean | null
   expiresInSecs: number
-  pollIntervalSecs?: number | null
 }
 
 type NativeFirebaseLoopbackPoll = {
@@ -104,7 +85,6 @@ let persistencePromise: Promise<void> | null = null
 const DEFAULT_FIREBASE_OAUTH_POLL_INTERVAL_MS = 2000
 let runtimeOAuthConfig: MobileSyncOAuthConfig = {
   googleDesktopClientId: null,
-  githubClientId: null,
 }
 
 function normalizePublicClientId(value: string | null | undefined): string | null {
@@ -123,13 +103,6 @@ function getGoogleDesktopClientId(): string | null {
 
 function getGoogleDesktopClientSecret(): string | null {
   return normalizePublicClientId(import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_SECRET)
-}
-
-function getGithubClientId(): string | null {
-  return (
-    runtimeOAuthConfig.githubClientId ??
-    normalizePublicClientId(import.meta.env.VITE_GITHUB_OAUTH_CLIENT_ID)
-  )
 }
 
 function readFirebaseConfig(): { config: FirebaseConfig | null; missingKeys: string[] } {
@@ -166,17 +139,14 @@ export function getFirebaseRuntimeState(): FirebaseRuntimeState {
   const { config, missingKeys } = readFirebaseConfig()
   const googleClientId = getGoogleDesktopClientId()
   const googleClientSecret = getGoogleDesktopClientSecret()
-  const githubClientId = getGithubClientId()
   const missingOAuthKeys = [
     googleClientId ? null : "VITE_GOOGLE_DESKTOP_CLIENT_ID",
     googleClientSecret ? null : "VITE_GOOGLE_DESKTOP_CLIENT_SECRET",
-    githubClientId ? null : "VITE_GITHUB_OAUTH_CLIENT_ID",
   ].filter((key): key is string => Boolean(key))
   return {
     enabled: Boolean(config),
     missingKeys,
     googleClientConfigured: Boolean(googleClientId && googleClientSecret),
-    githubClientConfigured: Boolean(githubClientId),
     missingOAuthKeys,
   }
 }
@@ -184,7 +154,6 @@ export function getFirebaseRuntimeState(): FirebaseRuntimeState {
 export function hydrateFirebaseAuthRuntimeConfig(config: Partial<MobileSyncOAuthConfig>): void {
   runtimeOAuthConfig = {
     googleDesktopClientId: normalizePublicClientId(config.googleDesktopClientId),
-    githubClientId: normalizePublicClientId(config.githubClientId),
   }
 }
 
@@ -229,14 +198,8 @@ export async function initializeFirebaseAuthFlow(): Promise<null> {
   return null
 }
 
-function requiredPublicClientId(
-  envKey: "VITE_GOOGLE_DESKTOP_CLIENT_ID" | "VITE_GITHUB_OAUTH_CLIENT_ID",
-  providerName: string
-): string {
-  const value =
-    envKey === "VITE_GOOGLE_DESKTOP_CLIENT_ID"
-      ? getGoogleDesktopClientId()
-      : getGithubClientId()
+function requiredPublicClientId(providerName: string): string {
+  const value = getGoogleDesktopClientId()
   if (!value) {
     throw new Error(`${providerName} OAuth client ID is not configured on this Windows device`)
   }
@@ -261,17 +224,11 @@ export async function signInWithNativeTokens(tokens: NativeFirebaseOAuthTokens):
     return result.user
   }
 
-  if (tokens.providerId === "github.com") {
-    const credential = GithubAuthProvider.credential(tokens.accessToken)
-    const result = await signInWithCredential(auth, credential)
-    return result.user
-  }
-
   throw new Error(`Unsupported Firebase auth provider: ${tokens.providerId}`)
 }
 
 export async function startGoogleBrowserSignIn(): Promise<NativeFirebasePendingAuthSession> {
-  const clientId = requiredPublicClientId("VITE_GOOGLE_DESKTOP_CLIENT_ID", "Google")
+  const clientId = requiredPublicClientId("Google")
   const clientSecret = requiredGoogleDesktopClientSecret()
   const response = await invoke<NativeFirebaseLoopbackStart>("firebase_start_google_loopback_sign_in", {
     clientId,
@@ -293,34 +250,6 @@ export async function startGoogleBrowserSignIn(): Promise<NativeFirebasePendingA
   }
 }
 
-export async function startGithubBrowserSignIn(): Promise<NativeFirebasePendingAuthSession> {
-  const clientId = requiredPublicClientId("VITE_GITHUB_OAUTH_CLIENT_ID", "GitHub")
-  const response = await invoke<NativeFirebaseLoopbackStart>("firebase_start_github_loopback_sign_in", {
-    clientId,
-  })
-  if (
-    response.flow !== "device_code" ||
-    !response.verificationUri ||
-    !response.userCode ||
-    response.pollIntervalSecs == null
-  ) {
-    throw new Error("GitHub sign-in did not return a device authorization session")
-  }
-  return {
-    kind: "device_code",
-    providerId: "github.com",
-    providerLabel: "GitHub",
-    clientId,
-    sessionId: response.sessionId,
-    verificationUri: response.verificationUri,
-    userCode: response.userCode,
-    codeCopiedToClipboard: Boolean(response.codeCopiedToClipboard),
-    pollIntervalSecs: response.pollIntervalSecs,
-    expiresInSecs: response.expiresInSecs,
-    startedAt: Date.now(),
-  }
-}
-
 export async function completeNativeBrowserSignIn(
   session: NativeFirebasePendingAuthSession,
   signal?: AbortSignal
@@ -334,23 +263,12 @@ export async function completeNativeBrowserSignIn(
     }
 
     await new Promise((resolve) => {
-      const delayMs =
-        session.kind === "device_code"
-          ? session.pollIntervalSecs * 1000
-          : DEFAULT_FIREBASE_OAUTH_POLL_INTERVAL_MS
-      window.setTimeout(resolve, delayMs)
+      window.setTimeout(resolve, DEFAULT_FIREBASE_OAUTH_POLL_INTERVAL_MS)
     })
 
     const response = await invoke<NativeFirebaseLoopbackPoll>("firebase_poll_loopback_sign_in", {
       sessionId: session.sessionId,
     })
-
-    if (session.kind === "device_code" && response.intervalSecs && response.intervalSecs > 0) {
-      session = {
-        ...session,
-        pollIntervalSecs: response.intervalSecs,
-      }
-    }
 
     if (response.status === "approved") {
       const accessToken = response.accessToken?.trim()
@@ -371,12 +289,6 @@ export async function completeNativeBrowserSignIn(
 
 export async function signInWithGoogle(): Promise<User> {
   const session = await startGoogleBrowserSignIn()
-  const tokens = await completeNativeBrowserSignIn(session)
-  return signInWithNativeTokens(tokens)
-}
-
-export async function signInWithGithub(): Promise<User> {
-  const session = await startGithubBrowserSignIn()
   const tokens = await completeNativeBrowserSignIn(session)
   return signInWithNativeTokens(tokens)
 }

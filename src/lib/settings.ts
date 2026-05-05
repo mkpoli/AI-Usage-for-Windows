@@ -36,7 +36,6 @@ const START_ON_LOGIN_KEY = "startOnLogin";
 const MOBILE_SYNC_DEVICE_ID_KEY = "mobileSyncDeviceId";
 const MOBILE_SYNC_DEVICE_NAME_KEY = "mobileSyncDeviceName";
 const MOBILE_SYNC_GOOGLE_DESKTOP_CLIENT_ID_KEY = "mobileSyncGoogleDesktopClientId";
-const MOBILE_SYNC_GITHUB_CLIENT_ID_KEY = "mobileSyncGithubClientId";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 5;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -49,7 +48,6 @@ export const DEFAULT_MOBILE_SYNC_DEVICE_NAME = "Windows PC";
 
 export type MobileSyncOAuthConfig = {
   googleDesktopClientId: string | null;
-  githubClientId: string | null;
 };
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
@@ -360,17 +358,11 @@ function normalizePublicClientId(value: string | null | undefined): string | nul
 }
 
 export async function loadMobileSyncOAuthConfig(): Promise<MobileSyncOAuthConfig> {
-  const [googleDesktopClientId, githubClientId] = await Promise.all([
-    store.get<unknown>(MOBILE_SYNC_GOOGLE_DESKTOP_CLIENT_ID_KEY),
-    store.get<unknown>(MOBILE_SYNC_GITHUB_CLIENT_ID_KEY),
-  ]);
+  const googleDesktopClientId = await store.get<unknown>(MOBILE_SYNC_GOOGLE_DESKTOP_CLIENT_ID_KEY);
 
   return {
     googleDesktopClientId: normalizePublicClientId(
       typeof googleDesktopClientId === "string" ? googleDesktopClientId : null
-    ),
-    githubClientId: normalizePublicClientId(
-      typeof githubClientId === "string" ? githubClientId : null
     ),
   };
 }
@@ -379,10 +371,6 @@ export async function saveMobileSyncOAuthConfig(config: MobileSyncOAuthConfig): 
   await store.set(
     MOBILE_SYNC_GOOGLE_DESKTOP_CLIENT_ID_KEY,
     normalizePublicClientId(config.googleDesktopClientId)
-  );
-  await store.set(
-    MOBILE_SYNC_GITHUB_CLIENT_ID_KEY,
-    normalizePublicClientId(config.githubClientId)
   );
   await store.save();
 }

@@ -38,7 +38,6 @@ export type AppContentActionProps = {
   mobileSyncError: string | null
   mobileSyncPendingDeviceCodeAuth: NativeFirebasePendingAuthSession | null
   onMobileSyncGoogleSignIn: () => Promise<void> | void
-  onMobileSyncGithubSignIn: () => Promise<void> | void
   onMobileSyncSyncNow: () => Promise<void> | void
   onMobileSyncSignOut: () => Promise<void> | void
   onMobileSyncSaveDeviceName: (deviceName: string) => Promise<void> | void
@@ -65,7 +64,6 @@ export function AppContent({
   mobileSyncError,
   mobileSyncPendingDeviceCodeAuth,
   onMobileSyncGoogleSignIn,
-  onMobileSyncGithubSignIn,
   onMobileSyncSyncNow,
   onMobileSyncSignOut,
   onMobileSyncSaveDeviceName,
@@ -129,7 +127,6 @@ export function AppContent({
         mobileSyncError={mobileSyncError}
         mobileSyncPendingDeviceCodeAuth={mobileSyncPendingDeviceCodeAuth}
         onMobileSyncGoogleSignIn={onMobileSyncGoogleSignIn}
-        onMobileSyncGithubSignIn={onMobileSyncGithubSignIn}
         onMobileSyncSyncNow={onMobileSyncSyncNow}
         onMobileSyncSignOut={onMobileSyncSignOut}
         onMobileSyncSaveDeviceName={onMobileSyncSaveDeviceName}
