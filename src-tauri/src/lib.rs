@@ -294,6 +294,12 @@ fn hide_panel(app_handle: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn show_panel(app_handle: tauri::AppHandle) {
+    #[cfg(target_os = "windows")]
+    panel_windows::show_panel(&app_handle);
+}
+
+#[tauri::command]
 fn position_panel(app_handle: tauri::AppHandle) {
     #[cfg(target_os = "windows")]
     panel_windows::position_panel_near_tray(&app_handle);
@@ -786,6 +792,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             init_panel,
             hide_panel,
+            show_panel,
             position_panel,
             open_devtools,
             get_runtime_info,
@@ -1278,6 +1285,7 @@ fn start_loopback_sign_in(
 
 fn start_github_device_sign_in(client_id: &str) -> Result<NativeFirebaseLoopbackAuthStart, String> {
     let client_id = validated_public_oauth_client_id(client_id, "GitHub")?;
+    log::info!("mobile sync GitHub device sign-in: requesting device code");
     let client = build_mobile_sync_http_client()?;
     let response = client
         .post("https://github.com/login/device/code")
@@ -1324,6 +1332,10 @@ fn start_github_device_sign_in(client_id: &str) -> Result<NativeFirebaseLoopback
     let poll_interval_secs = payload.interval.unwrap_or(5);
     let session_id = Uuid::new_v4().to_string();
     let code_copied_to_clipboard = copy_text_to_clipboard(&user_code).is_ok();
+    log::info!(
+        "mobile sync GitHub device sign-in: device code received; clipboard_copy={}",
+        code_copied_to_clipboard
+    );
 
     let session = NativeFirebaseLoopbackAuthSession {
         provider_id: "github.com".to_string(),
@@ -1351,6 +1363,7 @@ fn start_github_device_sign_in(client_id: &str) -> Result<NativeFirebaseLoopback
         update_loopback_session_failed(&session_id, format!("failed to open browser: {}", error));
         return Err(error);
     }
+    log::info!("mobile sync GitHub device sign-in: verification page opened");
 
     Ok(NativeFirebaseLoopbackAuthStart {
         provider_id: "github.com".to_string(),
@@ -1411,12 +1424,14 @@ fn poll_loopback_sign_in(session_id: &str) -> Result<NativeFirebaseLoopbackAuthP
         match device_poll.outcome {
             GithubDevicePollOutcome::Pending => {}
             GithubDevicePollOutcome::Approved { access_token } => {
+                log::info!("mobile sync GitHub device sign-in: approved");
                 session.status = NativeFirebaseLoopbackAuthState::Approved {
                     access_token,
                     id_token: None,
                 };
             }
             GithubDevicePollOutcome::Failed { message } => {
+                log::warn!("mobile sync GitHub device sign-in: failed: {}", message);
                 session.status = NativeFirebaseLoopbackAuthState::Failed { message };
             }
         }

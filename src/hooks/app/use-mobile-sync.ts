@@ -1,5 +1,6 @@
 import type { User } from "firebase/auth"
 import { getVersion } from "@tauri-apps/api/app"
+import { invoke, isTauri } from "@tauri-apps/api/core"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { PluginMeta } from "@/lib/plugin-types"
 import {
@@ -55,6 +56,13 @@ function formatErrorMessage(error: unknown, fallback: string): string {
     return error.message.trim()
   }
   return fallback
+}
+
+function showPanelAfterBrowserSignIn(): void {
+  if (!isTauri()) return
+  invoke("show_panel").catch((showError) => {
+    console.error("Failed to show panel after Mobile Sync sign-in:", showError)
+  })
 }
 
 export function useMobileSync({
@@ -235,6 +243,7 @@ export function useMobileSync({
       authAbortControllerRef.current = controller
       const tokens = await completeNativeBrowserSignIn(session, controller.signal)
       await signInWithNativeTokens(tokens)
+      showPanelAfterBrowserSignIn()
     } catch (signInError) {
       console.error("Failed to sign in with Google:", signInError)
       setError(formatErrorMessage(signInError, "Failed to sign in with Google"))
@@ -257,6 +266,7 @@ export function useMobileSync({
       authAbortControllerRef.current = controller
       const tokens = await completeNativeBrowserSignIn(session, controller.signal)
       await signInWithNativeTokens(tokens)
+      showPanelAfterBrowserSignIn()
     } catch (signInError) {
       console.error("Failed to sign in with GitHub:", signInError)
       setError(formatErrorMessage(signInError, "Failed to sign in with GitHub"))

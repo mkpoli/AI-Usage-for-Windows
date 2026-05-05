@@ -31,6 +31,8 @@ const state = vi.hoisted(() => ({
   saveMobileSyncDeviceIdMock: vi.fn(),
   loadMobileSyncDeviceNameMock: vi.fn(),
   saveMobileSyncDeviceNameMock: vi.fn(),
+  loadMobileSyncOAuthConfigMock: vi.fn(),
+  saveMobileSyncOAuthConfigMock: vi.fn(),
   autostartEnableMock: vi.fn(),
   autostartDisableMock: vi.fn(),
   autostartIsEnabledMock: vi.fn(),
@@ -59,10 +61,14 @@ const runtimeInfoState = vi.hoisted(() => ({
 
 const firebaseState = vi.hoisted(() => ({
   getFirebaseRuntimeStateMock: vi.fn(),
+  hydrateFirebaseAuthRuntimeConfigMock: vi.fn(),
   initializeFirebaseAuthFlowMock: vi.fn(),
   watchFirebaseUserMock: vi.fn(),
   signInWithGoogleMock: vi.fn(),
   signInWithGithubMock: vi.fn(),
+  startGithubBrowserSignInMock: vi.fn(),
+  completeNativeBrowserSignInMock: vi.fn(),
+  signInWithNativeTokensMock: vi.fn(),
   signOutFirebaseMock: vi.fn(),
 }))
 
@@ -219,10 +225,14 @@ vi.mock("@/lib/runtime-info", () => ({
 
 vi.mock("@/lib/firebase", () => ({
   getFirebaseRuntimeState: firebaseState.getFirebaseRuntimeStateMock,
+  hydrateFirebaseAuthRuntimeConfig: firebaseState.hydrateFirebaseAuthRuntimeConfigMock,
   initializeFirebaseAuthFlow: firebaseState.initializeFirebaseAuthFlowMock,
   watchFirebaseUser: firebaseState.watchFirebaseUserMock,
   signInWithGoogle: firebaseState.signInWithGoogleMock,
   signInWithGithub: firebaseState.signInWithGithubMock,
+  startGithubBrowserSignIn: firebaseState.startGithubBrowserSignInMock,
+  completeNativeBrowserSignIn: firebaseState.completeNativeBrowserSignInMock,
+  signInWithNativeTokens: firebaseState.signInWithNativeTokensMock,
   signOutFirebase: firebaseState.signOutFirebaseMock,
   getFirebaseServices: vi.fn(() => null),
 }))
@@ -274,6 +284,8 @@ vi.mock("@/lib/settings", async () => {
     saveMobileSyncDeviceId: state.saveMobileSyncDeviceIdMock,
     loadMobileSyncDeviceName: state.loadMobileSyncDeviceNameMock,
     saveMobileSyncDeviceName: state.saveMobileSyncDeviceNameMock,
+    loadMobileSyncOAuthConfig: state.loadMobileSyncOAuthConfigMock,
+    saveMobileSyncOAuthConfig: state.saveMobileSyncOAuthConfigMock,
   }
 })
 
@@ -325,15 +337,21 @@ describe("App", () => {
     state.saveMobileSyncDeviceIdMock.mockReset()
     state.loadMobileSyncDeviceNameMock.mockReset()
     state.saveMobileSyncDeviceNameMock.mockReset()
+    state.loadMobileSyncOAuthConfigMock.mockReset()
+    state.saveMobileSyncOAuthConfigMock.mockReset()
     state.autostartEnableMock.mockReset()
     state.autostartDisableMock.mockReset()
     state.autostartIsEnabledMock.mockReset()
     runtimeInfoState.loadRuntimeInfoMock.mockReset()
     firebaseState.getFirebaseRuntimeStateMock.mockReset()
+    firebaseState.hydrateFirebaseAuthRuntimeConfigMock.mockReset()
     firebaseState.initializeFirebaseAuthFlowMock.mockReset()
     firebaseState.watchFirebaseUserMock.mockReset()
     firebaseState.signInWithGoogleMock.mockReset()
     firebaseState.signInWithGithubMock.mockReset()
+    firebaseState.startGithubBrowserSignInMock.mockReset()
+    firebaseState.completeNativeBrowserSignInMock.mockReset()
+    firebaseState.signInWithNativeTokensMock.mockReset()
     firebaseState.signOutFirebaseMock.mockReset()
     state.renderTrayBarsIconMock.mockReset()
     state.trayGetByIdMock.mockReset()
@@ -370,6 +388,25 @@ describe("App", () => {
     firebaseState.watchFirebaseUserMock.mockImplementation(() => () => undefined)
     firebaseState.signInWithGoogleMock.mockResolvedValue(undefined)
     firebaseState.signInWithGithubMock.mockResolvedValue(undefined)
+    firebaseState.startGithubBrowserSignInMock.mockResolvedValue({
+      kind: "device_code",
+      providerId: "github.com",
+      providerLabel: "GitHub",
+      clientId: "github-client",
+      sessionId: "github-session",
+      verificationUri: "https://github.com/login/device",
+      userCode: "ABCD-1234",
+      codeCopiedToClipboard: true,
+      pollIntervalSecs: 1,
+      expiresInSecs: 900,
+      startedAt: Date.now(),
+    })
+    firebaseState.completeNativeBrowserSignInMock.mockResolvedValue({
+      providerId: "github.com",
+      accessToken: "github-access-token",
+      idToken: null,
+    })
+    firebaseState.signInWithNativeTokensMock.mockResolvedValue(undefined)
     firebaseState.signOutFirebaseMock.mockResolvedValue(undefined)
     state.savePluginSettingsMock.mockResolvedValue(undefined)
     state.saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
@@ -390,6 +427,11 @@ describe("App", () => {
     state.saveMobileSyncDeviceIdMock.mockResolvedValue(undefined)
     state.loadMobileSyncDeviceNameMock.mockResolvedValue("Windows PC")
     state.saveMobileSyncDeviceNameMock.mockResolvedValue(undefined)
+    state.loadMobileSyncOAuthConfigMock.mockResolvedValue({
+      googleDesktopClientId: null,
+      githubClientId: null,
+    })
+    state.saveMobileSyncOAuthConfigMock.mockResolvedValue(undefined)
     state.autostartEnableMock.mockResolvedValue(undefined)
     state.autostartDisableMock.mockResolvedValue(undefined)
     state.autostartIsEnabledMock.mockResolvedValue(false)
@@ -821,6 +863,25 @@ describe("App", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
 
     await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("hide_panel"))
+  })
+
+  it("shows the panel again after GitHub Mobile Sync sign-in completes", async () => {
+    state.isTauriMock.mockReturnValue(true)
+    firebaseState.getFirebaseRuntimeStateMock.mockReturnValue({
+      enabled: true,
+      missingKeys: [],
+      googleClientConfigured: true,
+      githubClientConfigured: true,
+    })
+
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    await userEvent.click(await screen.findByRole("button", { name: "Sign In with GitHub" }))
+
+    await waitFor(() => expect(firebaseState.signInWithNativeTokensMock).toHaveBeenCalled())
+    await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("show_panel"))
   })
 
   it("toggles plugins in settings", async () => {
