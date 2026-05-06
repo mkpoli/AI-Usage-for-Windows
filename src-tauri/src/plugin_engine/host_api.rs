@@ -16,7 +16,7 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-const WHITELISTED_ENV_VARS: [&str; 16] = [
+const WHITELISTED_ENV_VARS: [&str; 20] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -33,6 +33,10 @@ const WHITELISTED_ENV_VARS: [&str; 16] = [
     "MINIMAX_CN_API_KEY",
     "SYNTHETIC_API_KEY",
     "PI_CODING_AGENT_DIR",
+    "COPILOT_HOME",
+    "COPILOT_GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
 ];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -162,11 +166,16 @@ fn windows_last_error_message() -> String {
 
 #[cfg(target_os = "windows")]
 fn read_windows_generic_credential(service: &str, account: Option<&str>) -> Result<String, String> {
+    let target = windows_credential_target_name(service, account);
+    read_windows_generic_credential_target(&target)
+}
+
+#[cfg(target_os = "windows")]
+fn read_windows_generic_credential_target(target: &str) -> Result<String, String> {
     use windows_sys::Win32::Security::Credentials::{
         CRED_TYPE_GENERIC, CREDENTIALW, CredFree, CredReadW,
     };
 
-    let target = windows_credential_target_name(service, account);
     let target_w = windows_wide_null(&target);
     let mut credential: *mut CREDENTIALW = std::ptr::null_mut();
 
@@ -193,6 +202,27 @@ fn read_windows_generic_credential(service: &str, account: Option<&str>) -> Resu
     }?;
 
     Ok(value)
+}
+
+#[cfg(target_os = "windows")]
+fn read_external_keytar_credential(service: &str, account: &str) -> Result<String, String> {
+    if service != "copilot-cli" {
+        return Err("external credential service is not allowed".to_string());
+    }
+
+    let trimmed_account = account.trim();
+    if trimmed_account.is_empty()
+        || trimmed_account.len() > 256
+        || trimmed_account.contains('\0')
+        || trimmed_account.contains('\n')
+        || trimmed_account.contains('\r')
+        || !trimmed_account.starts_with("https://")
+    {
+        return Err("external credential account is not allowed".to_string());
+    }
+
+    let target = format!("{}/{}", service, trimmed_account);
+    read_windows_generic_credential_target(&target)
 }
 
 #[cfg(target_os = "windows")]
@@ -2224,6 +2254,67 @@ fn inject_keychain<'js>(
                         );
                         Err(Exception::throw_message(&ctx_inner, &error))
                     }
+                }
+            },
+        )?,
+    )?;
+
+    let pid_external_read = plugin_id.to_string();
+    keychain_obj.set(
+        "readExternalKeytarPassword",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>,
+                  service: String,
+                  account: String|
+                  -> rquickjs::Result<String> {
+                if pid_external_read != "copilot" {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "external keychain read is not allowed for this plugin",
+                    ));
+                }
+
+                let redacted_account = redact_value(&account);
+                log::info!(
+                    "[plugin:{}] external keychain read: service={}, account={}",
+                    pid_external_read,
+                    service,
+                    redacted_account
+                );
+
+                #[cfg(target_os = "windows")]
+                {
+                    match read_external_keytar_credential(&service, &account) {
+                        Ok(value) => {
+                            log::info!(
+                                "[plugin:{}] external keychain read hit: service={}, account={}",
+                                pid_external_read,
+                                service,
+                                redacted_account
+                            );
+                            Ok(value)
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "[plugin:{}] external keychain read miss: service={}, account={}, error={}",
+                                pid_external_read,
+                                service,
+                                redacted_account,
+                                error
+                            );
+                            Err(Exception::throw_message(&ctx_inner, &error))
+                        }
+                    }
+                }
+
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let _ = (service, account);
+                    Err(Exception::throw_message(
+                        &ctx_inner,
+                        "external keychain API is only supported on Windows",
+                    ))
                 }
             },
         )?,

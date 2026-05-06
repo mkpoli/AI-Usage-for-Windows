@@ -42,6 +42,22 @@ function setGhCliKeychain(ctx, value) {
   });
 }
 
+function setCopilotCliKeychain(ctx, token) {
+  ctx.host.fs.writeText(
+    "~/.copilot/config.json",
+    JSON.stringify({
+      lastLoggedInUser: { host: "https://github.com", login: "datell1357" },
+      loggedInUsers: [{ host: "https://github.com", login: "datell1357" }],
+    }),
+  );
+  ctx.host.keychain.readExternalKeytarPassword.mockImplementation((service, account) => {
+    if (service === "copilot-cli" && account === "https://github.com:datell1357") {
+      return token;
+    }
+    return null;
+  });
+}
+
 function setStateFileToken(ctx, token) {
   ctx.host.fs.writeText(
     ctx.app.pluginDataDir + "/auth.json",
@@ -65,7 +81,7 @@ describe("copilot plugin", () => {
   it("throws when no token found", async () => {
     const ctx = makePluginTestContext();
     const plugin = await loadPlugin();
-    expect(() => plugin.probe(ctx)).toThrow("Not logged in. Run `gh auth login` first.");
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in. Run `copilot login` or `gh auth login` first.");
   });
 
   it("loads token from AI Usage keychain", async () => {
@@ -76,7 +92,22 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("token ghu_keychain");
+    expect(call.headers.Authorization).toBe("Bearer ghu_keychain");
+  });
+
+  it("loads token from Copilot CLI keychain", async () => {
+    const ctx = makePluginTestContext();
+    setCopilotCliKeychain(ctx, "ghu_copilot_cli");
+    mockUsageOk(ctx);
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(ctx.host.keychain.readExternalKeytarPassword).toHaveBeenCalledWith(
+      "copilot-cli",
+      "https://github.com:datell1357",
+    );
+    const call = ctx.host.http.request.mock.calls[0][0];
+    expect(call.headers.Authorization).toBe("Bearer ghu_copilot_cli");
   });
 
   it("loads token from gh CLI keychain (plain)", async () => {
@@ -87,7 +118,7 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("token gho_plain_token");
+    expect(call.headers.Authorization).toBe("Bearer gho_plain_token");
   });
 
   it("loads token from gh CLI keychain (base64-encoded)", async () => {
@@ -99,7 +130,7 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("token gho_encoded_token");
+    expect(call.headers.Authorization).toBe("Bearer gho_encoded_token");
   });
 
   it("loads token from state file", async () => {
@@ -110,7 +141,7 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("token ghu_state");
+    expect(call.headers.Authorization).toBe("Bearer ghu_state");
   });
 
   it("prefers keychain over gh-cli", async () => {
@@ -125,7 +156,7 @@ describe("copilot plugin", () => {
     const plugin = await loadPlugin();
     plugin.probe(ctx);
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("token ghu_keychain");
+    expect(call.headers.Authorization).toBe("Bearer ghu_keychain");
   });
 
   it("prefers keychain over state file", async () => {
@@ -136,7 +167,7 @@ describe("copilot plugin", () => {
     const plugin = await loadPlugin();
     plugin.probe(ctx);
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("token ghu_keychain");
+    expect(call.headers.Authorization).toBe("Bearer ghu_keychain");
   });
 
   it("persists token from gh-cli to keychain and state file", async () => {
@@ -276,7 +307,7 @@ describe("copilot plugin", () => {
     setKeychainToken(ctx, "tok");
     ctx.host.http.request.mockReturnValue({ status: 401, bodyText: "" });
     const plugin = await loadPlugin();
-    expect(() => plugin.probe(ctx)).toThrow("Token invalid. Run `gh auth login` to re-authenticate.");
+    expect(() => plugin.probe(ctx)).toThrow("Token invalid. Run `copilot login` or `gh auth login` to re-authenticate.");
   });
 
   it("throws on 403", async () => {
@@ -284,7 +315,7 @@ describe("copilot plugin", () => {
     setKeychainToken(ctx, "tok");
     ctx.host.http.request.mockReturnValue({ status: 403, bodyText: "" });
     const plugin = await loadPlugin();
-    expect(() => plugin.probe(ctx)).toThrow("Token invalid. Run `gh auth login` to re-authenticate.");
+    expect(() => plugin.probe(ctx)).toThrow("Token invalid. Run `copilot login` or `gh auth login` to re-authenticate.");
   });
 
   it("throws on HTTP 500", async () => {
@@ -322,15 +353,14 @@ describe("copilot plugin", () => {
     );
   });
 
-  it("uses 'token' auth header format (not 'Bearer')", async () => {
+  it("uses 'Bearer' auth header format", async () => {
     const ctx = makePluginTestContext();
     setKeychainToken(ctx, "ghu_format");
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     plugin.probe(ctx);
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toMatch(/^token /);
-    expect(call.headers.Authorization).not.toMatch(/^Bearer /);
+    expect(call.headers.Authorization).toBe("Bearer ghu_format");
   });
 
   it("includes correct User-Agent and editor headers", async () => {
@@ -466,7 +496,7 @@ describe("copilot plugin", () => {
     // First request with stale token returns 401, second with fresh token succeeds
     ctx.host.http.request.mockImplementation((opts) => {
       callCount++;
-      if (opts.headers.Authorization === "token stale_token") {
+      if (opts.headers.Authorization === "Bearer stale_token") {
         return { status: 401, bodyText: "" };
       }
       return { status: 200, bodyText: JSON.stringify(makeUsageResponse()) };

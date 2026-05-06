@@ -1,6 +1,9 @@
 (function () {
   const KEYCHAIN_SERVICE = "AI Usage-copilot";
   const GH_KEYCHAIN_SERVICE = "gh:github.com";
+  const COPILOT_CLI_KEYCHAIN_SERVICE = "copilot-cli";
+  const COPILOT_CONFIG_PATH = "~/.copilot/config.json";
+  const COPILOT_SETTINGS_PATH = "~/.copilot/settings.json";
   const USAGE_URL = "https://api.github.com/copilot_internal/user";
 
   function readJson(ctx, path) {
@@ -81,6 +84,114 @@
     return null;
   }
 
+  function readEnvText(ctx, name) {
+    try {
+      if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null;
+      const value = ctx.host.env.get(name);
+      return typeof value === "string" && value.trim() ? value.trim() : null;
+    } catch (e) {
+      ctx.host.log.info("env read failed for " + name + ": " + String(e));
+      return null;
+    }
+  }
+
+  function loadTokenFromEnv(ctx) {
+    const names = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
+    for (let i = 0; i < names.length; i += 1) {
+      const token = readEnvText(ctx, names[i]);
+      if (token) {
+        ctx.host.log.info("token loaded from Copilot-compatible environment");
+        return { token: token, source: "env" };
+      }
+    }
+    return null;
+  }
+
+  function normalizeHost(host) {
+    const value = typeof host === "string" && host.trim() ? host.trim() : "https://github.com";
+    return value.replace(/\/+$/, "");
+  }
+
+  function copilotAccountFromUser(user) {
+    if (!user || typeof user !== "object") return null;
+    const login = typeof user.login === "string" ? user.login.trim() : "";
+    if (!login) return null;
+    return normalizeHost(user.host) + ":" + login;
+  }
+
+  function copilotAccountsFromConfig(ctx) {
+    const config = readJson(ctx, COPILOT_CONFIG_PATH);
+    const accounts = [];
+
+    function add(account) {
+      if (account && accounts.indexOf(account) === -1) accounts.push(account);
+    }
+
+    if (config) {
+      add(copilotAccountFromUser(config.lastLoggedInUser));
+      if (Array.isArray(config.loggedInUsers)) {
+        for (let i = 0; i < config.loggedInUsers.length; i += 1) {
+          add(copilotAccountFromUser(config.loggedInUsers[i]));
+        }
+      }
+    }
+
+    return accounts;
+  }
+
+  function loadTokenFromCopilotPlaintextConfig(ctx, accounts) {
+    const configs = [readJson(ctx, COPILOT_SETTINGS_PATH), readJson(ctx, COPILOT_CONFIG_PATH)];
+    for (let i = 0; i < configs.length; i += 1) {
+      const config = configs[i];
+      if (!config || !config.copilotTokens || typeof config.copilotTokens !== "object") {
+        continue;
+      }
+
+      for (let j = 0; j < accounts.length; j += 1) {
+        const token = config.copilotTokens[accounts[j]];
+        if (typeof token === "string" && token.trim()) {
+          ctx.host.log.info("token loaded from Copilot CLI plaintext config");
+          return { token: token.trim(), source: "copilot-cli" };
+        }
+      }
+
+      const values = Object.keys(config.copilotTokens)
+        .map((key) => config.copilotTokens[key])
+        .filter((value) => typeof value === "string" && value.trim());
+      if (values.length > 0) {
+        ctx.host.log.info("token loaded from Copilot CLI plaintext config");
+        return { token: values[0].trim(), source: "copilot-cli" };
+      }
+    }
+    return null;
+  }
+
+  function loadTokenFromCopilotCli(ctx) {
+    const accounts = copilotAccountsFromConfig(ctx);
+    const keychain = ctx.host.keychain;
+    if (
+      keychain &&
+      typeof keychain.readExternalKeytarPassword === "function"
+    ) {
+      for (let i = 0; i < accounts.length; i += 1) {
+        try {
+          const token = keychain.readExternalKeytarPassword(
+            COPILOT_CLI_KEYCHAIN_SERVICE,
+            accounts[i],
+          );
+          if (typeof token === "string" && token.trim()) {
+            ctx.host.log.info("token loaded from Copilot CLI keychain");
+            return { token: token.trim(), source: "copilot-cli" };
+          }
+        } catch (e) {
+          ctx.host.log.info("Copilot CLI keychain read failed: " + String(e));
+        }
+      }
+    }
+
+    return loadTokenFromCopilotPlaintextConfig(ctx, accounts);
+  }
+
   function loadTokenFromStateFile(ctx) {
     const data = readJson(ctx, ctx.app.pluginDataDir + "/auth.json");
     if (data && data.token) {
@@ -93,7 +204,9 @@
   function loadToken(ctx) {
     return (
       loadTokenFromKeychain(ctx) ||
+      loadTokenFromCopilotCli(ctx) ||
       loadTokenFromGhCli(ctx) ||
+      loadTokenFromEnv(ctx) ||
       loadTokenFromStateFile(ctx)
     );
   }
@@ -103,7 +216,7 @@
       method: "GET",
       url: USAGE_URL,
       headers: {
-        Authorization: "token " + token,
+        Authorization: "Bearer " + token,
         Accept: "application/json",
         "Editor-Version": "vscode/1.96.2",
         "Editor-Plugin-Version": "copilot-chat/0.26.7",
@@ -146,7 +259,7 @@
   function probe(ctx) {
     const cred = loadToken(ctx);
     if (!cred) {
-      throw "Not logged in. Run `gh auth login` first.";
+      throw "Not logged in. Run `copilot login` or `gh auth login` first.";
     }
 
     let token = cred.token;
@@ -165,7 +278,7 @@
       if (source === "keychain") {
         ctx.host.log.info("cached token invalid, trying fallback sources");
         clearCachedToken(ctx);
-        const fallback = loadTokenFromGhCli(ctx);
+        const fallback = loadTokenFromCopilotCli(ctx) || loadTokenFromGhCli(ctx) || loadTokenFromEnv(ctx);
         if (fallback) {
           try {
             resp = fetchUsage(ctx, fallback.token);
@@ -183,7 +296,7 @@
       }
       // Still failing after retry
       if (resp.status === 401 || resp.status === 403) {
-        throw "Token invalid. Run `gh auth login` to re-authenticate.";
+        throw "Token invalid. Run `copilot login` or `gh auth login` to re-authenticate.";
       }
     }
 
@@ -196,8 +309,8 @@
       );
     }
 
-    // Persist gh-cli token to AI Usage keychain for future use
-    if (source === "gh-cli") {
+    // Persist external tokens to AI Usage keychain for future use
+    if (source === "gh-cli" || source === "copilot-cli" || source === "env") {
       saveToken(ctx, token);
     }
 
