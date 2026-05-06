@@ -844,8 +844,7 @@ describe("App", () => {
   })
 
   it("toggles plugins in settings", async () => {
-    // Use already-normalised settings so no init save fires ("b" is disabled
-    // because it is not in DEFAULT_ENABLED_PLUGINS = ["claude","codex"]).
+    // Use already-normalised settings so no init save fires.
     state.loadPluginSettingsMock.mockResolvedValue({ order: ["a", "b"], disabled: ["b"] })
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })

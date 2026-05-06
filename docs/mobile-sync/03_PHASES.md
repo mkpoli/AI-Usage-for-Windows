@@ -10,7 +10,7 @@
 ### 목표
 모바일 앱에서 로그인하고 6자리 코드로 Windows PC를 연결한 뒤, PC가 Firebase에 latest snapshot을 업로드하고 모바일 앱/위젯이 표시합니다.
 
-Phase 1 provider 범위는 현재 AI Usage for Windows에서 지원하는 Claude, Codex, Gemini, Antigravity, Cursor입니다. GitHub Copilot은 Windows provider 구현이 추가된 뒤 future phase에서 다룹니다.
+Phase 1 provider 범위는 현재 AI Usage for Windows에서 지원하는 Claude, Codex, Gemini, Antigravity, Cursor, GitHub Copilot입니다.
 
 ### 기능
 - [ ] Firebase 프로젝트 생성 및 Auth/Firestore/Functions 설정
@@ -67,7 +67,7 @@ Phase 1 범위:
 - 모바일 latest snapshot viewer
 - iOS/Android 위젯 cache 표시
 - Windows provider 범위: Claude, Codex, Gemini, Antigravity, Cursor
-- GitHub Copilot은 future provider로 제외
+- GitHub Copilot은 Windows provider로 포함
 
 반드시 지켜야 할 것:
 - 04_PROJECT_SPEC.md의 “절대 하지 마” 목록 준수
@@ -125,7 +125,7 @@ Phase 1 범위:
 - [ ] push notification: 한도 임박, Provider error, PC offline
 - [ ] snapshot history 저장 및 trend view
 - [ ] Cloud Functions rate limiting / abuse 방어
-- [ ] GitHub Copilot provider 추가 검토 및 Windows 수집 기능 연동
+- [x] GitHub Copilot provider 추가 검토 및 Windows 수집 기능 연동
 
 ### 주의사항
 - end-to-end encryption은 위젯 cache와 keychain/keystore 설계까지 함께 고려해야 합니다.

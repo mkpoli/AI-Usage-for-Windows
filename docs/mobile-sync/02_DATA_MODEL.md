@@ -76,7 +76,7 @@
 | providers | provider별 사용량 배열 | see below | O |
 
 ### Provider Usage
-Windows 앱이 업로드한 provider별 요약 정보입니다. Phase 1 provider는 Claude, Codex, Gemini, Antigravity, Cursor입니다. GitHub Copilot은 future provider입니다.
+Windows 앱이 업로드한 provider별 요약 정보입니다. Phase 1 provider는 Claude, Codex, Gemini, Antigravity, Cursor, GitHub Copilot입니다.
 
 | 필드 | 설명 | 예시 | 필수 |
 |------|------|------|------|
@@ -92,7 +92,7 @@ Windows 앱이 업로드한 provider별 요약 정보입니다. Phase 1 provider
 Phase 1에서 허용하는 `providerId`는 다음과 같습니다.
 
 ```text
-claude, codex, gemini, antigravity, cursor
+claude, codex, gemini, antigravity, cursor, copilot
 ```
 
 모바일 앱은 이 목록을 화면에 하드코딩하지 않고 `providers[]`에 포함된 순서와 값을 렌더링합니다. future provider가 추가되어도 payload shape가 동일하면 `schemaVersion`은 유지할 수 있습니다.

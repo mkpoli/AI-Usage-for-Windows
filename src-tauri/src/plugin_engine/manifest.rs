@@ -2,8 +2,22 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-const SUPPORTED_PLUGIN_IDS: &[&str] = &["antigravity", "claude", "codex", "cursor", "gemini"];
-const DEFAULT_PLUGIN_ORDER: &[&str] = &["claude", "codex", "gemini", "antigravity", "cursor"];
+const SUPPORTED_PLUGIN_IDS: &[&str] = &[
+    "antigravity",
+    "claude",
+    "codex",
+    "copilot",
+    "cursor",
+    "gemini",
+];
+const DEFAULT_PLUGIN_ORDER: &[&str] = &[
+    "claude",
+    "codex",
+    "gemini",
+    "antigravity",
+    "cursor",
+    "copilot",
+];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -344,9 +358,9 @@ mod tests {
         assert!(is_supported_plugin_id("antigravity"));
         assert!(is_supported_plugin_id("claude"));
         assert!(is_supported_plugin_id("codex"));
+        assert!(is_supported_plugin_id("copilot"));
         assert!(is_supported_plugin_id("cursor"));
         assert!(is_supported_plugin_id("gemini"));
-        assert!(!is_supported_plugin_id("copilot"));
     }
 
     #[test]
@@ -363,6 +377,7 @@ mod tests {
         write_test_plugin(&dir, "cursor", "Cursor");
         write_test_plugin(&dir, "antigravity", "Antigravity");
         write_test_plugin(&dir, "gemini", "Gemini");
+        write_test_plugin(&dir, "copilot", "Copilot");
         write_test_plugin(&dir, "codex", "Codex");
         write_test_plugin(&dir, "claude", "Claude");
 
@@ -372,7 +387,10 @@ mod tests {
             .map(|plugin| plugin.manifest.id.as_str())
             .collect();
 
-        assert_eq!(ids, vec!["claude", "codex", "gemini", "antigravity", "cursor"]);
+        assert_eq!(
+            ids,
+            vec!["claude", "codex", "gemini", "antigravity", "cursor", "copilot"]
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

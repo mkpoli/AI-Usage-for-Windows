@@ -4,12 +4,12 @@
 
 AI Usage for Mobile is designed as a read-only mobile companion for AI Usage for Windows. The mobile apps and widgets should not authenticate directly with AI providers. The Windows app remains responsible for provider credential access and usage collection, while Firebase stores only display-safe latest usage snapshots.
 
-The source mobile planning documents mention GitHub Copilot in the initial provider examples. The Windows app currently supports Claude, Codex, Gemini, Antigravity, and Cursor. GitHub Copilot should remain a future provider until Windows collection support is added.
+The source mobile planning documents mention GitHub Copilot in the initial provider examples. The Windows app currently supports Claude, Codex, Gemini, Antigravity, Cursor, and GitHub Copilot.
 
 ## Decisions
 
 - MVP provider scope follows the current Windows app: Claude, Codex, Gemini, Antigravity, and Cursor.
-- GitHub Copilot is documented as a future provider.
+- GitHub Copilot is included as a Windows provider.
 - Mobile UI renders the uploaded `providers[]` array instead of hardcoding a provider list.
 - Firebase receives only normalized snapshot data. Provider tokens, refresh tokens, API keys, cookies, credential files, local paths, and raw logs remain on the Windows device.
 - Pairing code creation and consumption are handled through Cloud Functions.
