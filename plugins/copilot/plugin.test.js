@@ -84,6 +84,21 @@ describe("copilot plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in. Run `copilot login` or `gh auth login` first.");
   });
 
+  it("explains Copilot interactive session without persistent token", async () => {
+    const ctx = makePluginTestContext();
+    ctx.host.fs.writeText(
+      "~/.copilot/config.json",
+      JSON.stringify({
+        lastLoggedInUser: { host: "https://github.com", login: "datell1357" },
+        loggedInUsers: [{ host: "https://github.com", login: "datell1357" }],
+      }),
+    );
+    const plugin = await loadPlugin();
+    expect(() => plugin.probe(ctx)).toThrow(
+      "Copilot session found, but no persistent token is saved. Run `copilot login` in PowerShell, not `/auth` inside Copilot.",
+    );
+  });
+
   it("loads token from AI Usage keychain", async () => {
     const ctx = makePluginTestContext();
     setKeychainToken(ctx, "ghu_keychain");

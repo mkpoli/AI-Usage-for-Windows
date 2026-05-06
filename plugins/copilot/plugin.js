@@ -139,6 +139,10 @@
     return accounts;
   }
 
+  function hasCopilotLoginConfig(ctx) {
+    return copilotAccountsFromConfig(ctx).length > 0;
+  }
+
   function loadTokenFromCopilotPlaintextConfig(ctx, accounts) {
     const configs = [readJson(ctx, COPILOT_SETTINGS_PATH), readJson(ctx, COPILOT_CONFIG_PATH)];
     for (let i = 0; i < configs.length; i += 1) {
@@ -259,6 +263,9 @@
   function probe(ctx) {
     const cred = loadToken(ctx);
     if (!cred) {
+      if (hasCopilotLoginConfig(ctx)) {
+        throw "Copilot session found, but no persistent token is saved. Run `copilot login` in PowerShell, not `/auth` inside Copilot.";
+      }
       throw "Not logged in. Run `copilot login` or `gh auth login` first.";
     }
 
