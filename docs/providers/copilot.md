@@ -36,7 +36,7 @@ Choose `GitHub.com` and follow the prompts. The plugin automatically reads the t
 **Headers:**
 
 ```http
-Authorization: Bearer <token>
+Authorization: token <token>
 Accept: application/json
 Editor-Version: vscode/1.96.2
 Editor-Plugin-Version: copilot-chat/0.26.7
