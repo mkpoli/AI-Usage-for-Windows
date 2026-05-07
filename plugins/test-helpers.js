@@ -83,6 +83,9 @@ export const makeCtx = () => {
       ccusage: {
         query: vi.fn(() => null),
       },
+      githubCli: {
+        readAuthToken: vi.fn(() => null),
+      },
       log: {
         trace: vi.fn(),
         debug: vi.fn(),

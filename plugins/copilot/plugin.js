@@ -107,6 +107,25 @@
     return null;
   }
 
+  function loadTokenFromGhCliCommand(ctx) {
+    try {
+      if (
+        !ctx.host.githubCli ||
+        typeof ctx.host.githubCli.readAuthToken !== "function"
+      ) {
+        return null;
+      }
+      const token = ctx.host.githubCli.readAuthToken();
+      if (typeof token === "string" && token.trim()) {
+        ctx.host.log.info("token loaded from gh CLI command");
+        return { token: token.trim(), source: "gh-cli" };
+      }
+    } catch (e) {
+      ctx.host.log.info("gh CLI command token read failed: " + String(e));
+    }
+    return null;
+  }
+
   function normalizeHost(host) {
     const value = typeof host === "string" && host.trim() ? host.trim() : "https://github.com";
     return value.replace(/\/+$/, "");
@@ -210,6 +229,7 @@
       loadTokenFromKeychain(ctx) ||
       loadTokenFromCopilotCli(ctx) ||
       loadTokenFromGhCli(ctx) ||
+      loadTokenFromGhCliCommand(ctx) ||
       loadTokenFromEnv(ctx) ||
       loadTokenFromStateFile(ctx)
     );
@@ -220,7 +240,7 @@
       method: "GET",
       url: USAGE_URL,
       headers: {
-        Authorization: "Bearer " + token,
+        Authorization: "token " + token,
         Accept: "application/json",
         "Editor-Version": "vscode/1.96.2",
         "Editor-Plugin-Version": "copilot-chat/0.26.7",
@@ -285,7 +305,7 @@
       if (source === "keychain") {
         ctx.host.log.info("cached token invalid, trying fallback sources");
         clearCachedToken(ctx);
-        const fallback = loadTokenFromCopilotCli(ctx) || loadTokenFromGhCli(ctx) || loadTokenFromEnv(ctx);
+        const fallback = loadTokenFromCopilotCli(ctx) || loadTokenFromGhCli(ctx) || loadTokenFromGhCliCommand(ctx) || loadTokenFromEnv(ctx);
         if (fallback) {
           try {
             resp = fetchUsage(ctx, fallback.token);

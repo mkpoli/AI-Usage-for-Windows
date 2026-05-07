@@ -69,6 +69,68 @@ fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
     last_non_empty_trimmed_line(&stdout)
 }
 
+#[cfg(target_os = "windows")]
+fn github_cli_candidates() -> Vec<OsString> {
+    let mut candidates = Vec::new();
+    candidates.push(OsString::from("gh"));
+
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        candidates.push(
+            PathBuf::from(program_files)
+                .join("GitHub CLI")
+                .join("gh.exe")
+                .into_os_string(),
+        );
+    }
+
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(
+            PathBuf::from(local_app_data)
+                .join("Programs")
+                .join("GitHub CLI")
+                .join("gh.exe")
+                .into_os_string(),
+        );
+    }
+
+    candidates
+}
+
+#[cfg(target_os = "windows")]
+fn read_github_cli_auth_token() -> Result<String, String> {
+    let mut last_error = "GitHub CLI was not found".to_string();
+
+    for candidate in github_cli_candidates() {
+        let mut command = Command::new(&candidate);
+        command.args(["auth", "token"]);
+        configure_hidden_command_window(&mut command);
+
+        match command.output() {
+            Ok(output) => {
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    last_error = last_non_empty_trimmed_line(&stderr)
+                        .unwrap_or_else(|| "gh auth token failed".to_string());
+                    continue;
+                }
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let token = last_non_empty_trimmed_line(&stdout)
+                    .ok_or_else(|| "gh auth token returned no token".to_string())?;
+                if token.len() > 4096 || token.contains('\0') {
+                    return Err("gh auth token returned an invalid token".to_string());
+                }
+                return Ok(token);
+            }
+            Err(error) => {
+                last_error = error.to_string();
+            }
+        }
+    }
+
+    Err(last_error)
+}
+
 fn configure_hidden_command_window(command: &mut Command) {
     #[cfg(target_os = "windows")]
     {
@@ -647,6 +709,7 @@ pub fn inject_host_api<'js>(
     inject_env(ctx, &host, plugin_id)?;
     inject_http(ctx, &host, plugin_id)?;
     inject_keychain(ctx, &host, plugin_id)?;
+    inject_github_cli(ctx, &host, plugin_id)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
     inject_ccusage(ctx, &host, plugin_id)?;
@@ -2387,6 +2450,58 @@ fn inject_keychain<'js>(
     )?;
 
     host.set("keychain", keychain_obj)?;
+    Ok(())
+}
+
+fn inject_github_cli<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+) -> rquickjs::Result<()> {
+    let github_cli_obj = Object::new(ctx.clone())?;
+    let pid_read_auth_token = plugin_id.to_string();
+
+    github_cli_obj.set(
+        "readAuthToken",
+        Function::new(ctx.clone(), move |ctx_inner: Ctx<'_>| -> rquickjs::Result<String> {
+            if pid_read_auth_token != "copilot" {
+                return Err(Exception::throw_message(
+                    &ctx_inner,
+                    "GitHub CLI token read is not allowed for this plugin",
+                ));
+            }
+
+            log::info!("[plugin:{}] gh auth token read", pid_read_auth_token);
+
+            #[cfg(target_os = "windows")]
+            {
+                match read_github_cli_auth_token() {
+                    Ok(token) => {
+                        log::info!("[plugin:{}] gh auth token read hit", pid_read_auth_token);
+                        Ok(token)
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "[plugin:{}] gh auth token read failed: {}",
+                            pid_read_auth_token,
+                            error
+                        );
+                        Err(Exception::throw_message(&ctx_inner, &error))
+                    }
+                }
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                Err(Exception::throw_message(
+                    &ctx_inner,
+                    "GitHub CLI token API is only supported on Windows",
+                ))
+            }
+        })?,
+    )?;
+
+    host.set("githubCli", github_cli_obj)?;
     Ok(())
 }
 

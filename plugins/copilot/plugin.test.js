@@ -107,7 +107,7 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("Bearer ghu_keychain");
+    expect(call.headers.Authorization).toBe("token ghu_keychain");
   });
 
   it("loads token from Copilot CLI keychain", async () => {
@@ -122,7 +122,7 @@ describe("copilot plugin", () => {
       "https://github.com:datell1357",
     );
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("Bearer ghu_copilot_cli");
+    expect(call.headers.Authorization).toBe("token ghu_copilot_cli");
   });
 
   it("loads token from gh CLI keychain (plain)", async () => {
@@ -133,7 +133,7 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("Bearer gho_plain_token");
+    expect(call.headers.Authorization).toBe("token gho_plain_token");
   });
 
   it("loads token from gh CLI keychain (base64-encoded)", async () => {
@@ -145,7 +145,19 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("Bearer gho_encoded_token");
+    expect(call.headers.Authorization).toBe("token gho_encoded_token");
+  });
+
+  it("loads token from gh CLI command when keychain target is unavailable", async () => {
+    const ctx = makePluginTestContext();
+    ctx.host.githubCli.readAuthToken.mockReturnValue("gho_command_token");
+    mockUsageOk(ctx);
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(ctx.host.githubCli.readAuthToken).toHaveBeenCalled();
+    const call = ctx.host.http.request.mock.calls[0][0];
+    expect(call.headers.Authorization).toBe("token gho_command_token");
   });
 
   it("loads token from state file", async () => {
@@ -156,7 +168,7 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("Bearer ghu_state");
+    expect(call.headers.Authorization).toBe("token ghu_state");
   });
 
   it("prefers keychain over gh-cli", async () => {
@@ -171,7 +183,7 @@ describe("copilot plugin", () => {
     const plugin = await loadPlugin();
     plugin.probe(ctx);
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("Bearer ghu_keychain");
+    expect(call.headers.Authorization).toBe("token ghu_keychain");
   });
 
   it("prefers keychain over state file", async () => {
@@ -182,7 +194,7 @@ describe("copilot plugin", () => {
     const plugin = await loadPlugin();
     plugin.probe(ctx);
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("Bearer ghu_keychain");
+    expect(call.headers.Authorization).toBe("token ghu_keychain");
   });
 
   it("persists token from gh-cli to keychain and state file", async () => {
@@ -368,14 +380,14 @@ describe("copilot plugin", () => {
     );
   });
 
-  it("uses 'Bearer' auth header format", async () => {
+  it("uses upstream token auth header format", async () => {
     const ctx = makePluginTestContext();
     setKeychainToken(ctx, "ghu_format");
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     plugin.probe(ctx);
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("Bearer ghu_format");
+    expect(call.headers.Authorization).toBe("token ghu_format");
   });
 
   it("includes correct User-Agent and editor headers", async () => {
@@ -511,7 +523,7 @@ describe("copilot plugin", () => {
     // First request with stale token returns 401, second with fresh token succeeds
     ctx.host.http.request.mockImplementation((opts) => {
       callCount++;
-      if (opts.headers.Authorization === "Bearer stale_token") {
+      if (opts.headers.Authorization === "token stale_token") {
         return { status: 401, bodyText: "" };
       }
       return { status: 200, bodyText: JSON.stringify(makeUsageResponse()) };
