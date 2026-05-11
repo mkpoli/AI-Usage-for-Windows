@@ -76,6 +76,25 @@ describe("ProviderCard", () => {
     expect(screen.getByText("Two")).toBeInTheDocument()
   })
 
+  it("keeps existing metrics visible while refreshing", () => {
+    render(
+      <ProviderCard
+        name="Refreshing"
+        displayMode="used"
+        loading
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+        ]}
+        lines={[
+          { type: "progress", label: "Session", used: 49, limit: 100, format: { kind: "percent" } },
+        ]}
+      />
+    )
+
+    expect(screen.getByText("49%")).toBeInTheDocument()
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "49")
+  })
+
   it("shows loading spinner when retry is enabled", () => {
     const { container } = render(
       <ProviderCard

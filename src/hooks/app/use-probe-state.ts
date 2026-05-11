@@ -31,7 +31,7 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
       for (const id of ids) {
         const existing = prev[id]
         next[id] = {
-          data: null,
+          data: existing?.data ?? null,
           loading: true,
           error: null,
           lastManualRefreshAt: existing?.lastManualRefreshAt ?? null,
@@ -47,7 +47,7 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
       for (const id of ids) {
         const existing = prev[id]
         next[id] = {
-          data: null,
+          data: existing?.data ?? null,
           loading: false,
           error,
           lastManualRefreshAt: existing?.lastManualRefreshAt ?? null,
@@ -68,7 +68,7 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
       setPluginStates((prev) => ({
         ...prev,
         [output.providerId]: {
-          data: errorMessage ? null : output,
+          data: errorMessage ? prev[output.providerId]?.data ?? null : output,
           loading: false,
           error: errorMessage,
           lastManualRefreshAt: !errorMessage && isManual

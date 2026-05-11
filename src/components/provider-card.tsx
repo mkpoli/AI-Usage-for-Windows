@@ -113,6 +113,7 @@ export function ProviderCard({
   const filteredLines = scopeFilter === "all"
     ? lines
     : lines.filter(line => overviewLabels.has(line.label))
+  const hasVisibleLines = filteredLines.length > 0
 
   const hasResetCountdown = filteredLines.some(
     (line) => line.type === "progress" && Boolean(line.resetsAt)
@@ -244,11 +245,11 @@ export function ProviderCard({
         )}
         {error && <PluginError message={error} />}
 
-        {loading && !error && (
+        {loading && !error && !hasVisibleLines && (
           <SkeletonLines lines={filteredSkeletonLines} />
         )}
 
-        {!loading && !error && (
+        {!error && (!loading || hasVisibleLines) && (
           <div className="space-y-4">
             {groupLinesByType(filteredLines).map((group, gi) =>
               group.kind === "text" ? (
