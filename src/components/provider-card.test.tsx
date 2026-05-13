@@ -303,7 +303,7 @@ describe("ProviderCard", () => {
     expect(screen.queryByText(/^Next reset:/)).not.toBeInTheDocument()
   })
 
-  it("shows 'Resets soon' when reset is under 5 minutes away", () => {
+  it("shows 'Resets soon' when reset is under 1 minute away", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T00:00:00.000Z")
     vi.setSystemTime(now)
@@ -318,7 +318,7 @@ describe("ProviderCard", () => {
             used: 10,
             limit: 100,
             format: { kind: "percent" },
-            resetsAt: "2026-02-02T00:04:59.000Z",
+            resetsAt: "2026-02-02T00:00:59.000Z",
           },
         ]}
       />
@@ -327,7 +327,7 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
-  it("keeps standard reset text at exactly 5 minutes", () => {
+  it("keeps standard reset text at exactly 1 minute", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T00:00:00.000Z")
     vi.setSystemTime(now)
@@ -342,12 +342,12 @@ describe("ProviderCard", () => {
             used: 10,
             limit: 100,
             format: { kind: "percent" },
-            resetsAt: "2026-02-02T00:05:00.000Z",
+            resetsAt: "2026-02-02T00:01:00.000Z",
           },
         ]}
       />
     )
-    expect(screen.getByText("Resets in 5m")).toBeInTheDocument()
+    expect(screen.getByText("Resets in 1m")).toBeInTheDocument()
     vi.useRealTimers()
   })
 
