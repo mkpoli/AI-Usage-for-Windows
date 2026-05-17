@@ -349,6 +349,61 @@ describe("cursor plugin", () => {
     expect(totalLine.limit).toBe(100)
   })
 
+  it("does not infer team account from zero pooled limit on free plans", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: 1778999551075,
+            billingCycleEnd: 1781677951075,
+            planUsage: {
+              totalPercentUsed: 0,
+              autoPercentUsed: 0,
+              apiPercentUsed: 0,
+              remainingBonus: false,
+            },
+            spendLimitUsage: {
+              pooledLimit: 0,
+              pooledRemaining: 0,
+              individualLimit: 0,
+              limitType: "user",
+              overallLimit: 0,
+              overallRemaining: 0,
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            planInfo: { planName: "Free", price: "$0/mo" },
+          }),
+        }
+      }
+      if (String(opts.url).includes("/auth/usage") || String(opts.url).includes("cursor.com/api/usage")) {
+        throw new Error("unexpected request usage fallback")
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const totalLine = result.lines.find((line) => line.label === "Total usage")
+
+    expect(result.plan).toBe("Free")
+    expect(totalLine).toBeTruthy()
+    expect(totalLine.used).toBe(0)
+    expect(totalLine.limit).toBe(100)
+    expect(totalLine.format).toEqual({ kind: "percent" })
+  })
+
   it("renders percent-only usage when plan info is unavailable", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
