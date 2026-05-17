@@ -12,7 +12,8 @@
   const PLAN_URL = BASE_URL + "/aiserver.v1.DashboardService/GetPlanInfo"
   const REFRESH_URL = BASE_URL + "/oauth/token"
   const CREDITS_URL = BASE_URL + "/aiserver.v1.DashboardService/GetCreditGrantsBalance"
-  const REST_USAGE_URL = "https://cursor.com/api/usage"
+  const AUTH_USAGE_URL = BASE_URL + "/auth/usage"
+  const LEGACY_REST_USAGE_URL = "https://cursor.com/api/usage"
   const STRIPE_URL = "https://cursor.com/api/auth/stripe"
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
@@ -295,30 +296,91 @@
     return { userId: userId, sessionToken: userId + "%3A%3A" + accessToken }
   }
 
+  function requestUsageBucket(requestUsage) {
+    if (!requestUsage || typeof requestUsage !== "object") return null
+
+    var preferredKeys = ["gpt-4", "premium", "gpt-5"]
+    for (var i = 0; i < preferredKeys.length; i++) {
+      var preferred = requestUsage[preferredKeys[i]]
+      if (requestUsageLimit(preferred) > 0) return preferred
+    }
+
+    var best = null
+    var bestLimit = 0
+    for (var key in requestUsage) {
+      if (!Object.prototype.hasOwnProperty.call(requestUsage, key)) continue
+      var candidate = requestUsage[key]
+      var limit = requestUsageLimit(candidate)
+      if (limit > bestLimit) {
+        best = candidate
+        bestLimit = limit
+      }
+    }
+    return best
+  }
+
+  function requestUsageLimit(bucket) {
+    if (!bucket || typeof bucket !== "object") return 0
+    var limit = Number(bucket.maxRequestUsage)
+    return Number.isFinite(limit) && limit > 0 ? limit : 0
+  }
+
+  function requestUsageUsed(bucket) {
+    if (!bucket || typeof bucket !== "object") return 0
+    var used = Number(bucket.numRequests)
+    if (!Number.isFinite(used)) used = Number(bucket.numRequestsTotal)
+    return Number.isFinite(used) && used > 0 ? used : 0
+  }
+
   function fetchRequestBasedUsage(ctx, accessToken) {
     var session = buildSessionToken(ctx, accessToken)
     if (!session) {
       ctx.host.log.warn("request-based: cannot build session token")
       return null
     }
-    try {
-      var resp = ctx.util.request({
-        method: "GET",
-        url: REST_USAGE_URL + "?user=" + encodeURIComponent(session.userId),
-        headers: {
-          Cookie: "WorkosCursorSessionToken=" + session.sessionToken,
+
+    var requests = [
+      {
+        name: "auth usage",
+        opts: {
+          method: "GET",
+          url: AUTH_USAGE_URL,
+          headers: {
+            Authorization: "Bearer " + accessToken,
+            Cookie: "WorkosCursorSessionToken=" + session.sessionToken,
+          },
+          timeoutMs: 10000,
         },
-        timeoutMs: 10000,
-      })
-      if (resp.status < 200 || resp.status >= 300) {
-        ctx.host.log.warn("request-based usage returned status=" + resp.status)
-        return null
+      },
+      {
+        name: "legacy usage",
+        opts: {
+          method: "GET",
+          url: LEGACY_REST_USAGE_URL + "?user=" + encodeURIComponent(session.userId),
+          headers: {
+            Cookie: "WorkosCursorSessionToken=" + session.sessionToken,
+          },
+          timeoutMs: 10000,
+        },
+      },
+    ]
+
+    for (var i = 0; i < requests.length; i++) {
+      var request = requests[i]
+      try {
+        var resp = ctx.util.request(request.opts)
+        if (resp.status < 200 || resp.status >= 300) {
+          ctx.host.log.warn("request-based " + request.name + " returned status=" + resp.status)
+          continue
+        }
+        var parsed = ctx.util.tryParseJson(resp.bodyText)
+        if (requestUsageBucket(parsed)) return parsed
+        ctx.host.log.warn("request-based " + request.name + " response had no request quota bucket")
+      } catch (e) {
+        ctx.host.log.warn("request-based " + request.name + " fetch failed: " + String(e))
       }
-      return ctx.util.tryParseJson(resp.bodyText)
-    } catch (e) {
-      ctx.host.log.warn("request-based usage fetch failed: " + String(e))
-      return null
     }
+    return null
   }
 
   function fetchStripeBalance(ctx, accessToken) {
@@ -357,10 +419,10 @@
     var lines = []
 
     if (requestUsage) {
-      var gpt4 = requestUsage["gpt-4"]
-      if (gpt4 && typeof gpt4.maxRequestUsage === "number" && gpt4.maxRequestUsage > 0) {
-        var used = gpt4.numRequests || 0
-        var limit = gpt4.maxRequestUsage
+      var bucket = requestUsageBucket(requestUsage)
+      if (bucket) {
+        var used = requestUsageUsed(bucket)
+        var limit = requestUsageLimit(bucket)
 
         var billingPeriodMs = 30 * 24 * 60 * 60 * 1000
         var cycleStart = requestUsage.startOfMonth
