@@ -60,30 +60,6 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
-  mobileSyncStatus: {
-    isConfigured: true,
-    missingConfigKeys: [],
-    missingOAuthKeys: [],
-    googleSignInAvailable: true,
-    googleDesktopClientId: "",
-    isAuthenticated: false,
-    account: null,
-    deviceId: "dev_test",
-    deviceName: "Windows PC",
-    syncEnabled: true,
-    linkedAt: null,
-    lastSeenAt: null,
-    lastUploadedAt: null,
-    lastUploadStatus: "idle" as const,
-    lastError: null,
-  },
-  mobileSyncBusy: false,
-  mobileSyncError: null,
-  mobileSyncPendingDeviceCodeAuth: null,
-  onMobileSyncGoogleSignIn: vi.fn(),
-  onMobileSyncSyncNow: vi.fn(),
-  onMobileSyncSignOut: vi.fn(),
-  onMobileSyncSaveDeviceName: vi.fn(),
 }
 
 afterEach(() => {
@@ -233,55 +209,4 @@ describe("SettingsPage", () => {
     expect(onStartOnLoginChange).toHaveBeenCalledWith(true)
   })
 
-  it("renders mobile sync sign-in controls when no account is linked", () => {
-    render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("Mobile Sync")).toBeInTheDocument()
-    expect(screen.queryByLabelText("Google Desktop Client ID")).not.toBeInTheDocument()
-    expect(screen.queryByLabelText("GitHub OAuth Client ID")).not.toBeInTheDocument()
-    expect(screen.getByText(/Sign in with the same Firebase account used on Android/i)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Sign In with Google" })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Sign In with GitHub" })).not.toBeInTheDocument()
-  })
-
-  it("disables Google sign-in when Firebase provider settings are missing", () => {
-    render(
-      <SettingsPage
-        {...defaultProps}
-        mobileSyncStatus={{
-          ...defaultProps.mobileSyncStatus,
-          googleSignInAvailable: false,
-        }}
-      />
-    )
-
-    expect(screen.getByRole("button", { name: "Sign In with Google" })).toBeDisabled()
-    expect(screen.getByText(/Google sign-in settings are missing/i)).toBeInTheDocument()
-    expect(screen.getByText(/Google requires VITE_GOOGLE_DESKTOP_CLIENT_ID/i)).toBeInTheDocument()
-  })
-
-  it("renders device sync controls when signed in", () => {
-    render(
-      <SettingsPage
-        {...defaultProps}
-        mobileSyncStatus={{
-          ...defaultProps.mobileSyncStatus,
-          isAuthenticated: true,
-          account: {
-            uid: "uid_123",
-            email: "user@example.com",
-            displayName: "User",
-            photoURL: null,
-            providerIds: ["google.com"],
-          },
-          linkedAt: "2026-04-30T00:00:00.000Z",
-          lastUploadedAt: "2026-04-30T00:05:00.000Z",
-        }}
-      />
-    )
-
-    expect(screen.getByDisplayValue("Windows PC")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Save Device Name" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Sync Now" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Sign Out" })).toBeInTheDocument()
-  })
 })

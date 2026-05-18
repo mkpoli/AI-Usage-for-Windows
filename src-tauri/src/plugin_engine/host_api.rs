@@ -198,23 +198,6 @@ pub(crate) fn write_keychain_generic_password(
     }
 }
 
-pub(crate) fn delete_keychain_generic_password(
-    service: &str,
-    account: Option<&str>,
-) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        delete_windows_generic_credential(service, account)
-            .map_err(|error| format!("credential delete failed: {}", error))
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (service, account);
-        Err("keychain API is only supported on Windows".to_string())
-    }
-}
-
 #[cfg(target_os = "windows")]
 fn windows_wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
@@ -328,19 +311,6 @@ fn write_windows_generic_credential(
         return Err(windows_last_error_message());
     }
 
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn delete_windows_generic_credential(service: &str, account: Option<&str>) -> Result<(), String> {
-    use windows_sys::Win32::Security::Credentials::{CRED_TYPE_GENERIC, CredDeleteW};
-
-    let target = windows_credential_target_name(service, account);
-    let target_w = windows_wide_null(&target);
-    let ok = unsafe { CredDeleteW(target_w.as_ptr(), CRED_TYPE_GENERIC, 0) };
-    if ok == 0 {
-        return Err(windows_last_error_message());
-    }
     Ok(())
 }
 

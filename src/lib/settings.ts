@@ -33,9 +33,6 @@ const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
-const MOBILE_SYNC_DEVICE_ID_KEY = "mobileSyncDeviceId";
-const MOBILE_SYNC_DEVICE_NAME_KEY = "mobileSyncDeviceName";
-const MOBILE_SYNC_GOOGLE_DESKTOP_CLIENT_ID_KEY = "mobileSyncGoogleDesktopClientId";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 1;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -44,11 +41,6 @@ export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "bars";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = true;
-export const DEFAULT_MOBILE_SYNC_DEVICE_NAME = "Windows PC";
-
-export type MobileSyncOAuthConfig = {
-  googleDesktopClientId: string | null;
-};
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [1, 5, 10, 30];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -323,54 +315,5 @@ export async function loadStartOnLogin(): Promise<boolean> {
 
 export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.set(START_ON_LOGIN_KEY, value);
-  await store.save();
-}
-
-export async function loadMobileSyncDeviceId(): Promise<string | null> {
-  const stored = await store.get<unknown>(MOBILE_SYNC_DEVICE_ID_KEY);
-  return typeof stored === "string" && stored.length > 0 ? stored : null;
-}
-
-export async function saveMobileSyncDeviceId(deviceId: string): Promise<void> {
-  await store.set(MOBILE_SYNC_DEVICE_ID_KEY, deviceId);
-  await store.save();
-}
-
-export async function loadMobileSyncDeviceName(): Promise<string> {
-  const stored = await store.get<unknown>(MOBILE_SYNC_DEVICE_NAME_KEY);
-  return typeof stored === "string" && stored.trim().length > 0
-    ? stored.trim()
-    : DEFAULT_MOBILE_SYNC_DEVICE_NAME;
-}
-
-export async function saveMobileSyncDeviceName(deviceName: string): Promise<void> {
-  await store.set(
-    MOBILE_SYNC_DEVICE_NAME_KEY,
-    deviceName.trim().length > 0 ? deviceName.trim() : DEFAULT_MOBILE_SYNC_DEVICE_NAME
-  );
-  await store.save();
-}
-
-function normalizePublicClientId(value: string | null | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-export async function loadMobileSyncOAuthConfig(): Promise<MobileSyncOAuthConfig> {
-  const googleDesktopClientId = await store.get<unknown>(MOBILE_SYNC_GOOGLE_DESKTOP_CLIENT_ID_KEY);
-
-  return {
-    googleDesktopClientId: normalizePublicClientId(
-      typeof googleDesktopClientId === "string" ? googleDesktopClientId : null
-    ),
-  };
-}
-
-export async function saveMobileSyncOAuthConfig(config: MobileSyncOAuthConfig): Promise<void> {
-  await store.set(
-    MOBILE_SYNC_GOOGLE_DESKTOP_CLIENT_ID_KEY,
-    normalizePublicClientId(config.googleDesktopClientId)
-  );
   await store.save();
 }

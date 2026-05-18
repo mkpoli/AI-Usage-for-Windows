@@ -16,12 +16,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
-import type { MobileSyncStatus } from "@/lib/mobile-sync";
-import type { NativeFirebasePendingAuthSession } from "@/lib/firebase";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
@@ -120,14 +117,6 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
-  mobileSyncStatus: MobileSyncStatus | null;
-  mobileSyncBusy: boolean;
-  mobileSyncError: string | null;
-  mobileSyncPendingDeviceCodeAuth: NativeFirebasePendingAuthSession | null;
-  onMobileSyncGoogleSignIn: () => Promise<void> | void;
-  onMobileSyncSyncNow: () => Promise<void> | void;
-  onMobileSyncSignOut: () => Promise<void> | void;
-  onMobileSyncSaveDeviceName: (deviceName: string) => Promise<void> | void;
 }
 
 export function SettingsPage({
@@ -146,18 +135,7 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
-  mobileSyncStatus,
-  mobileSyncBusy,
-  mobileSyncError,
-  mobileSyncPendingDeviceCodeAuth,
-  onMobileSyncGoogleSignIn,
-  onMobileSyncSyncNow,
-  onMobileSyncSignOut,
-  onMobileSyncSaveDeviceName,
 }: SettingsPageProps) {
-  const [mobileSyncDeviceNameDraft, setMobileSyncDeviceNameDraft] = useState(
-    mobileSyncStatus?.deviceName ?? ""
-  );
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -176,19 +154,6 @@ export function SettingsPage({
       onReorder(next.map((item) => item.id));
     }
   };
-
-  useEffect(() => {
-    setMobileSyncDeviceNameDraft(mobileSyncStatus?.deviceName ?? "");
-  }, [mobileSyncStatus?.deviceName]);
-
-  const deviceNameSaveDisabled = useMemo(() => {
-    if (!mobileSyncStatus?.isAuthenticated) return true;
-    return (
-      mobileSyncBusy ||
-      mobileSyncDeviceNameDraft.trim().length === 0 ||
-      mobileSyncDeviceNameDraft.trim() === mobileSyncStatus.deviceName
-    );
-  }, [mobileSyncBusy, mobileSyncDeviceNameDraft, mobileSyncStatus]);
 
   return (
     <div className="py-3 space-y-4">
@@ -331,152 +296,6 @@ export function SettingsPage({
           />
           Start on login
         </label>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Mobile Sync</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          Sync this Windows device directly to Firebase for the mobile app
-        </p>
-        <div className="rounded-lg border bg-muted/50 p-3 space-y-3">
-          {!mobileSyncStatus?.isConfigured && (
-            <div className="space-y-1">
-              <p className="text-sm text-amber-600 dark:text-amber-400">
-                Firebase is not configured on this Windows device.
-              </p>
-              {mobileSyncStatus?.missingConfigKeys?.length ? (
-                <p className="text-xs text-muted-foreground">
-                  Missing: {mobileSyncStatus.missingConfigKeys.join(", ")}
-                </p>
-              ) : null}
-            </div>
-          )}
-
-          {mobileSyncStatus?.isConfigured && !mobileSyncStatus.googleSignInAvailable ? (
-            <div className="space-y-1">
-              <p className="text-sm text-amber-600 dark:text-amber-400">
-                Google sign-in settings are missing.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Google requires VITE_GOOGLE_DESKTOP_CLIENT_ID and VITE_GOOGLE_DESKTOP_CLIENT_SECRET.
-              </p>
-              {mobileSyncStatus.missingOAuthKeys?.length ? (
-                <p className="text-xs text-muted-foreground">
-                  Missing: {mobileSyncStatus.missingOAuthKeys.join(", ")}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {mobileSyncStatus?.isAuthenticated ? (
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">
-                  {mobileSyncStatus.account?.displayName ?? mobileSyncStatus.account?.email ?? "Signed in"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Firebase account: {mobileSyncStatus.account?.email ?? mobileSyncStatus.account?.uid}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Device ID: {mobileSyncStatus.deviceId ?? "Not assigned yet"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Linked: {mobileSyncStatus.linkedAt
-                    ? new Date(mobileSyncStatus.linkedAt).toLocaleString()
-                    : "Not linked yet"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Last sync: {mobileSyncStatus.lastUploadedAt
-                    ? new Date(mobileSyncStatus.lastUploadedAt).toLocaleString()
-                    : "Not uploaded yet"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Sync status: {mobileSyncStatus.syncEnabled ? mobileSyncStatus.lastUploadStatus : "disabled"}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <label className="block space-y-1">
-                  <span className="text-sm font-medium">Device Name</span>
-                  <input
-                    value={mobileSyncDeviceNameDraft}
-                    onChange={(event) => setMobileSyncDeviceNameDraft(event.target.value)}
-                    placeholder="Windows PC"
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onMobileSyncSaveDeviceName(mobileSyncDeviceNameDraft)}
-                  disabled={deviceNameSaveDisabled}
-                >
-                  {mobileSyncBusy ? "Saving..." : "Save Device Name"}
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => void onMobileSyncSyncNow()}
-                  disabled={mobileSyncBusy || !mobileSyncStatus.syncEnabled}
-                >
-                  {mobileSyncBusy ? "Syncing..." : "Sync Now"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void onMobileSyncSignOut()}
-                  disabled={mobileSyncBusy}
-                >
-                  Sign Out
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Sign in with the same Firebase account used on Android. Devices under the same
-                uid connect automatically.
-              </p>
-              {mobileSyncPendingDeviceCodeAuth ? (
-                <div className="rounded-md border bg-background px-3 py-3 space-y-2">
-                  <p className="text-sm font-medium">
-                    Finish {mobileSyncPendingDeviceCodeAuth.providerLabel} sign-in in your browser
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Complete the sign-in page in your browser. The app will continue
-                    automatically after the browser redirects back to this Windows device.
-                  </p>
-                  <a
-                    href={mobileSyncPendingDeviceCodeAuth.authorizationUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-primary underline underline-offset-4"
-                  >
-                    Reopen sign-in page
-                  </a>
-                </div>
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => void onMobileSyncGoogleSignIn()}
-                  disabled={mobileSyncBusy || !mobileSyncStatus?.googleSignInAvailable}
-                >
-                  {mobileSyncBusy ? "Signing in..." : "Sign In with Google"}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {(mobileSyncError || mobileSyncStatus?.lastError) && (
-            <p className="text-sm text-destructive">
-              {mobileSyncError ?? mobileSyncStatus?.lastError}
-            </p>
-          )}
-        </div>
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>

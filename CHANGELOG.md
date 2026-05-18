@@ -1,17 +1,20 @@
 # Changelog
 
-## v0.2.0 - 2026-04-29
+## v0.1.1 - 2026-05-18
 
 ### Added
 
-- Windows-side Mobile Sync foundation for AI Usage for Mobile
-- Mobile Sync settings section with pairing, manual sync, and unlink controls
-- Secure Mobile Sync upload token storage in Windows Credential Manager
-- Snapshot normalization from current Windows provider state for mobile upload
+- GitHub Copilot provider support
+- 1-minute auto refresh option and 1-minute default refresh interval
 
 ### Fixed
 
 - Plugin enabled/disabled settings now persist across app restarts instead of re-enabling default providers during bootstrap
+
+### Removed
+
+- Google sign-in and mobile synchronization from the Windows settings screen
+- Firebase client integration and sync-specific runtime configuration
 
 ## v0.1.0 - 2026-04-27
 
