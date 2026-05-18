@@ -590,4 +590,3 @@ mod tests {
         assert!(!is_windows_packaged_process());
     }
 }
-
