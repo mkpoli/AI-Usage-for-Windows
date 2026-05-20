@@ -273,26 +273,19 @@
 
   // --- Line builders ---
 
-  function normalizeLabel(label) {
-    // "Gemini 3 Pro (High)" -> "Gemini 3 Pro"
-    return label.replace(/\s*\([^)]*\)\s*$/, "").trim()
-  }
-
-  function poolLabel(normalizedLabel) {
-    var lower = normalizedLabel.toLowerCase()
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "Gemini Pro"
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "Gemini Flash"
-    // All non-Gemini models (Claude, GPT-OSS, etc.) share a single quota pool
-    return "Claude"
-  }
-
   function modelSortKey(label) {
     var lower = label.toLowerCase()
-    // Gemini Pro variants first, then other Gemini, then Claude Opus, then other Claude, then rest
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "0a_" + label
-    if (lower.indexOf("gemini") !== -1) return "0b_" + label
-    if (lower.indexOf("claude") !== -1 && lower.indexOf("opus") !== -1) return "1a_" + label
-    if (lower.indexOf("claude") !== -1) return "1b_" + label
+    // Match Antigravity's model quota UI: newest Gemini Flash first, then Pro,
+    // then Claude variants, then other model garden entries.
+    if (lower.indexOf("gemini 3.5") !== -1 && lower.indexOf("flash") !== -1) return "0a_" + label
+    if (lower.indexOf("gemini 3.5") !== -1 && lower.indexOf("pro") !== -1) return "0b_" + label
+    if (lower.indexOf("gemini 3.1") !== -1 && lower.indexOf("pro") !== -1) return "0c_" + label
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "0d_" + label
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "0e_" + label
+    if (lower.indexOf("gemini") !== -1) return "0f_" + label
+    if (lower.indexOf("claude") !== -1 && lower.indexOf("sonnet") !== -1) return "1a_" + label
+    if (lower.indexOf("claude") !== -1 && lower.indexOf("opus") !== -1) return "1b_" + label
+    if (lower.indexOf("claude") !== -1) return "1c_" + label
     return "2_" + label
   }
 
@@ -312,7 +305,7 @@
   }
 
   function buildModelLines(ctx, configs) {
-    var deduped = {}
+    var models = []
     for (var i = 0; i < configs.length; i++) {
       var c = configs[i]
       var label = (typeof c.label === "string") ? c.label.trim() : ""
@@ -320,22 +313,12 @@
       var qi = c.quotaInfo
       var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
       var rtime = (qi && qi.resetTime) || undefined
-      var pool = poolLabel(normalizeLabel(label))
-      if (!deduped[pool] || frac < deduped[pool].remainingFraction) {
-        deduped[pool] = {
-          label: pool,
-          remainingFraction: frac,
-          resetTime: rtime,
-        }
-      }
-    }
-
-    var models = []
-    var keys = Object.keys(deduped)
-    for (var i = 0; i < keys.length; i++) {
-      var m = deduped[keys[i]]
-      m.sortKey = modelSortKey(m.label)
-      models.push(m)
+      models.push({
+        label: label,
+        remainingFraction: frac,
+        resetTime: rtime,
+        sortKey: modelSortKey(label),
+      })
     }
 
     models.sort(function (a, b) {

@@ -52,12 +52,12 @@ When no language-server endpoint is available, the plugin calls:
 POST https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels
 ```
 
-The response includes provisioned models and quota information. AI Usage filters out internal or non-user-facing models and renders quota lines for visible models.
+The response includes provisioned models and quota information. AI Usage filters out internal or non-user-facing models and renders each visible model quota bucket separately.
 
 ## Output Mapping
 
 - **Plan:** best-effort account plan name when available
-- **Model lines:** each visible model is shown as percent used
+- **Model lines:** each visible Antigravity model quota bucket is shown as percent used, preserving labels such as `Gemini 3.5 Flash (High)`, `Gemini 3.5 Flash (Medium)`, `Gemini 3.1 Pro (High)`, `Gemini 3.1 Pro (Low)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and `GPT-OSS 120B (Medium)`
 - **Account:** account email/name when available
 
 ## Limitations

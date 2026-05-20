@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.2 - 2026-05-20
+
+### Changed
+
+- Antigravity quota rendering now preserves each visible model bucket instead of merging models into broad Gemini or Claude groups
+- Antigravity documentation now reflects model-specific quota lines such as Gemini 3.5 Flash, Gemini 3.1 Pro, Claude 4.6, and GPT-OSS
+
 ## v0.1.1 - 2026-05-18
 
 ### Added
