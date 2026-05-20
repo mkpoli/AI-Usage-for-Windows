@@ -35,12 +35,14 @@ The Windows release currently bundles these providers:
 |---|---:|---|
 | [Claude](docs/providers/claude.md) | Available | Claude Code OAuth usage, weekly/session limits, extra usage, ccusage local token data |
 | [Codex](docs/providers/codex.md) | Available | Codex/ChatGPT OAuth usage, weekly/session limits, reviews, credits |
-| [Gemini](docs/providers/gemini.md) | Available | Gemini CLI OAuth credentials and Cloud Code quota APIs |
+| [Gemini](docs/providers/gemini.md) | Available | Gemini CLI / Code Assist OAuth credentials and Cloud Code quota APIs |
 | [GitHub Copilot](docs/providers/copilot.md) | Available | GitHub CLI authenticated Copilot usage limits |
 | [Antigravity](docs/providers/antigravity.md) | Available | Windows SQLite and Cloud Code fallback path |
 | [Cursor](docs/providers/cursor.md) | Available | Cursor Desktop SQLite and CLI credential fallback |
 
 Provider usage appears when the corresponding third-party tool is installed on the local Windows device, the user has completed sign-in so credentials are available, and the provider is enabled in the app settings.
+
+Gemini usage reflects Gemini CLI / Code Assist quota buckets. Gemini app compute-based limits and Gemini API token accounting are separate Google surfaces.
 
 ### Documentation
 
@@ -149,12 +151,14 @@ AI Usage는 Windows 시스템 트레이에서만 동작하며 작업표시줄에
 |---|---:|---|
 | [Claude](docs/providers/claude.md) | 사용 가능 | Claude Code OAuth 사용량, 주간/세션 제한, extra usage, ccusage 로컬 토큰 데이터 |
 | [Codex](docs/providers/codex.md) | 사용 가능 | Codex/ChatGPT OAuth 사용량, 주간/세션 제한, reviews, credits |
-| [Gemini](docs/providers/gemini.md) | 사용 가능 | Gemini CLI OAuth credentials 및 Cloud Code quota API |
+| [Gemini](docs/providers/gemini.md) | 사용 가능 | Gemini CLI / Code Assist OAuth credentials 및 Cloud Code quota API |
 | [GitHub Copilot](docs/providers/copilot.md) | 사용 가능 | GitHub CLI 인증 기반 Copilot 사용량 제한 |
 | [Antigravity](docs/providers/antigravity.md) | 사용 가능 | Windows SQLite 및 Cloud Code fallback 경로 |
 | [Cursor](docs/providers/cursor.md) | 사용 가능 | Cursor Desktop SQLite 및 CLI credential fallback |
 
 각 provider 사용량은 해당 도구가 로컬 Windows 기기에 설치되어 있고, 사용자가 로그인해 credential을 사용할 수 있으며, 앱 설정에서 provider가 활성화된 경우 표시됩니다.
+
+Gemini 사용량은 Gemini CLI / Code Assist quota bucket 기준입니다. Gemini 앱의 compute 기반 제한과 Gemini API token accounting은 별도 Google 화면입니다.
 
 ### 문서
 

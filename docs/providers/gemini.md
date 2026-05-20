@@ -1,6 +1,7 @@
 # Gemini
 
-Tracks Gemini CLI usage through local OAuth credentials and Gemini quota APIs.
+Tracks Gemini CLI / Gemini Code Assist usage through local OAuth credentials and
+Gemini quota APIs.
 
 ## Data sources
 
@@ -42,6 +43,18 @@ These return explicit errors.
   - `free-tier` + `hd` claim -> `Workspace`
   - `free-tier` -> `Free`
   - `legacy-tier` -> `Legacy`
-- **Pro**: lowest remaining Gemini Pro bucket
-- **Flash**: lowest remaining Gemini Flash bucket
+- **Quota lines**: Gemini quota buckets returned by `retrieveUserQuota`
+  - model-specific labels such as `Gemini 3.5 Flash (High)` are preserved when
+    the API exposes them
+  - older generic buckets still fall back to `Pro` or `Flash`
 - **Account**: email from `id_token` claims
+
+## Gemini app and API limits
+
+Google's Gemini app quota model is changing toward compute-based limits in 2026.
+That consumer app dashboard is separate from the Gemini CLI / Code Assist quota
+endpoint used here.
+
+Gemini API token accounting is also separate. API calls expose request token
+counts through `usage_metadata` / `usageMetadata`, but AI Usage does not collect
+per-request Gemini API logs or billing data.

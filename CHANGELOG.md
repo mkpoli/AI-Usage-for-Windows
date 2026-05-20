@@ -6,6 +6,8 @@
 
 - Antigravity quota rendering now preserves each visible model bucket instead of merging models into broad Gemini or Claude groups
 - Antigravity documentation now reflects model-specific quota lines such as Gemini 3.5 Flash, Gemini 3.1 Pro, Claude 4.6, and GPT-OSS
+- Gemini quota rendering now preserves model-specific Gemini 3.x bucket labels when Google exposes them, while older buckets still fall back to Pro and Flash
+- Gemini documentation now clarifies that Gemini app compute-based limits and Gemini API token accounting are separate from Gemini CLI / Code Assist quota tracking
 
 ## v0.1.1 - 2026-05-18
 

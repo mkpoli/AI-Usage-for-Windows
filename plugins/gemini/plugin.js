@@ -309,39 +309,131 @@
     return null
   }
 
-  function collectQuotaBuckets(value, out) {
+  function firstString(value, keys) {
+    for (let i = 0; i < keys.length; i += 1) {
+      const candidate = value[keys[i]]
+      if (typeof candidate === "string" && candidate.trim()) return candidate.trim()
+    }
+    return null
+  }
+
+  function titleWord(word) {
+    const lower = String(word || "").toLowerCase()
+    if (lower === "gpt") return "GPT"
+    if (lower === "oss") return "OSS"
+    if (lower === "id") return "ID"
+    return lower ? lower.charAt(0).toUpperCase() + lower.slice(1) : ""
+  }
+
+  function humanizeModelId(modelId) {
+    const raw = String(modelId || "").trim()
+    if (!raw) return ""
+    const lastPart = raw.split("/").pop()
+    const cleaned = lastPart.replace(/_/g, "-").replace(/-latest$/i, "")
+    const lowerCleaned = cleaned.toLowerCase()
+    if (lowerCleaned.indexOf("gemini-3") !== 0) {
+      if (lowerCleaned.indexOf("flash") !== -1) return "Flash"
+      if (lowerCleaned.indexOf("pro") !== -1) return "Pro"
+    }
+    const parts = cleaned.split("-").filter(Boolean)
+    if (!parts.length) return raw
+
+    const suffix = []
+    const main = []
+    for (let i = 0; i < parts.length; i += 1) {
+      const lower = parts[i].toLowerCase()
+      if (lower === "high" || lower === "medium" || lower === "low" || lower === "thinking") {
+        suffix.push(titleWord(lower))
+      } else {
+        main.push(titleWord(parts[i]))
+      }
+    }
+
+    const label = main.join(" ")
+    if (suffix.length) return label + " (" + suffix.join(", ") + ")"
+    return label
+  }
+
+  function normalizeQuotaBucketLabel(bucket) {
+    const explicit = explicitQuotaBucketLabel(bucket)
+    if (explicit) return explicit
+    return humanizeModelId(bucket.modelId)
+  }
+
+  function explicitQuotaBucketLabel(bucket) {
+    return firstString(bucket, [
+      "displayName",
+      "display_name",
+      "label",
+      "quotaLabel",
+      "quota_label",
+      "quotaName",
+      "quota_name",
+    ])
+  }
+
+  function modelSortKey(label) {
+    const lower = String(label || "").toLowerCase()
+    if (lower.indexOf("gemini 3.5") !== -1 && lower.indexOf("flash") !== -1) return "0a_" + label
+    if (lower.indexOf("gemini 3.5") !== -1 && lower.indexOf("pro") !== -1) return "0b_" + label
+    if (lower.indexOf("gemini 3.1") !== -1 && lower.indexOf("pro") !== -1) return "0c_" + label
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "0d_" + label
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "0e_" + label
+    if (lower.indexOf("gemini") !== -1) return "0f_" + label
+    return "1_" + label
+  }
+
+  function getModelId(value, fallback) {
+    return typeof value.modelId === "string"
+      ? value.modelId
+      : typeof value.model_id === "string"
+        ? value.model_id
+        : typeof value.model === "string"
+          ? value.model
+          : typeof value.modelName === "string"
+            ? value.modelName
+            : typeof value.model_name === "string"
+              ? value.model_name
+              : fallback || "unknown"
+  }
+
+  function collectQuotaBuckets(value, out, inherited) {
     if (Array.isArray(value)) {
-      for (let i = 0; i < value.length; i += 1) collectQuotaBuckets(value[i], out)
+      for (let i = 0; i < value.length; i += 1) collectQuotaBuckets(value[i], out, inherited)
       return
     }
     if (!value || typeof value !== "object") return
 
-    if (typeof value.remainingFraction === "number") {
-      const modelId =
-        typeof value.modelId === "string"
-          ? value.modelId
-          : typeof value.model_id === "string"
-            ? value.model_id
-            : "unknown"
-      out.push({
+    const modelId = getModelId(value, inherited && inherited.modelId)
+    const explicitLabel = explicitQuotaBucketLabel(value)
+    const ownLabel = explicitLabel || humanizeModelId(modelId)
+    const inheritedLabel = inherited && inherited.label !== "Unknown" ? inherited.label : ""
+    const nextInherited = {
+      modelId,
+      label: ownLabel && ownLabel !== "Unknown" ? ownLabel : inheritedLabel || "Unknown",
+    }
+
+    const remainingFraction =
+      typeof value.remainingFraction === "number"
+        ? value.remainingFraction
+        : typeof value.remaining_fraction === "number"
+          ? value.remaining_fraction
+          : null
+
+    if (remainingFraction !== null) {
+      const bucket = {
         modelId,
-        remainingFraction: value.remainingFraction,
+        remainingFraction,
         resetTime: value.resetTime || value.reset_time || null,
+      }
+      out.push({
+        ...bucket,
+        label: nextInherited.label,
       })
     }
 
     const nested = Object.values(value)
-    for (let i = 0; i < nested.length; i += 1) collectQuotaBuckets(nested[i], out)
-  }
-
-  function pickLowestRemainingBucket(buckets) {
-    let best = null
-    for (let i = 0; i < buckets.length; i += 1) {
-      const bucket = buckets[i]
-      if (!Number.isFinite(bucket.remainingFraction)) continue
-      if (!best || bucket.remainingFraction < best.remainingFraction) best = bucket
-    }
-    return best
+    for (let i = 0; i < nested.length; i += 1) collectQuotaBuckets(nested[i], out, nextInherited)
   }
 
   function toUsageLine(ctx, label, bucket) {
@@ -363,24 +455,24 @@
     collectQuotaBuckets(quotaData, buckets)
     if (!buckets.length) return []
 
-    const proBuckets = []
-    const flashBuckets = []
+    const byLabel = new Map()
     for (let i = 0; i < buckets.length; i += 1) {
       const bucket = buckets[i]
-      const lower = String(bucket.modelId || "").toLowerCase()
-      if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) {
-        proBuckets.push(bucket)
-      } else if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) {
-        flashBuckets.push(bucket)
-      }
+      if (!Number.isFinite(bucket.remainingFraction)) continue
+      const label = bucket.label || humanizeModelId(bucket.modelId)
+      const haystack = (String(label || "") + " " + String(bucket.modelId || "")).toLowerCase()
+      if (haystack.indexOf("gemini") === -1) continue
+      const existing = byLabel.get(label)
+      if (!existing || bucket.remainingFraction < existing.remainingFraction) byLabel.set(label, { ...bucket, label })
     }
 
-    const lines = []
-    const pro = pickLowestRemainingBucket(proBuckets)
-    if (pro) lines.push(toUsageLine(ctx, "Pro", pro))
-    const flash = pickLowestRemainingBucket(flashBuckets)
-    if (flash) lines.push(toUsageLine(ctx, "Flash", flash))
-    return lines
+    return Array.from(byLabel.values())
+      .sort((a, b) => {
+        const aKey = modelSortKey(a.label)
+        const bKey = modelSortKey(b.label)
+        return aKey < bKey ? -1 : aKey > bKey ? 1 : 0
+      })
+      .map((bucket) => toUsageLine(ctx, bucket.label, bucket))
   }
 
   function fetchLoadCodeAssist(ctx, accessToken, creds) {
