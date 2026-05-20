@@ -16,7 +16,7 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-const WHITELISTED_ENV_VARS: [&str; 16] = [
+const WHITELISTED_ENV_VARS: [&str; 20] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -33,6 +33,10 @@ const WHITELISTED_ENV_VARS: [&str; 16] = [
     "MINIMAX_CN_API_KEY",
     "SYNTHETIC_API_KEY",
     "PI_CODING_AGENT_DIR",
+    "COPILOT_HOME",
+    "COPILOT_GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
 ];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -63,6 +67,68 @@ fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     last_non_empty_trimmed_line(&stdout)
+}
+
+#[cfg(target_os = "windows")]
+fn github_cli_candidates() -> Vec<OsString> {
+    let mut candidates = Vec::new();
+    candidates.push(OsString::from("gh"));
+
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        candidates.push(
+            PathBuf::from(program_files)
+                .join("GitHub CLI")
+                .join("gh.exe")
+                .into_os_string(),
+        );
+    }
+
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(
+            PathBuf::from(local_app_data)
+                .join("Programs")
+                .join("GitHub CLI")
+                .join("gh.exe")
+                .into_os_string(),
+        );
+    }
+
+    candidates
+}
+
+#[cfg(target_os = "windows")]
+fn read_github_cli_auth_token() -> Result<String, String> {
+    let mut last_error = "GitHub CLI was not found".to_string();
+
+    for candidate in github_cli_candidates() {
+        let mut command = Command::new(&candidate);
+        command.args(["auth", "token"]);
+        configure_hidden_command_window(&mut command);
+
+        match command.output() {
+            Ok(output) => {
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    last_error = last_non_empty_trimmed_line(&stderr)
+                        .unwrap_or_else(|| "gh auth token failed".to_string());
+                    continue;
+                }
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let token = last_non_empty_trimmed_line(&stdout)
+                    .ok_or_else(|| "gh auth token returned no token".to_string())?;
+                if token.len() > 4096 || token.contains('\0') {
+                    return Err("gh auth token returned an invalid token".to_string());
+                }
+                return Ok(token);
+            }
+            Err(error) => {
+                last_error = error.to_string();
+            }
+        }
+    }
+
+    Err(last_error)
 }
 
 fn configure_hidden_command_window(command: &mut Command) {
@@ -132,23 +198,6 @@ pub(crate) fn write_keychain_generic_password(
     }
 }
 
-pub(crate) fn delete_keychain_generic_password(
-    service: &str,
-    account: Option<&str>,
-) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        delete_windows_generic_credential(service, account)
-            .map_err(|error| format!("credential delete failed: {}", error))
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (service, account);
-        Err("keychain API is only supported on Windows".to_string())
-    }
-}
-
 #[cfg(target_os = "windows")]
 fn windows_wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
@@ -162,11 +211,16 @@ fn windows_last_error_message() -> String {
 
 #[cfg(target_os = "windows")]
 fn read_windows_generic_credential(service: &str, account: Option<&str>) -> Result<String, String> {
+    let target = windows_credential_target_name(service, account);
+    read_windows_generic_credential_target(&target)
+}
+
+#[cfg(target_os = "windows")]
+fn read_windows_generic_credential_target(target: &str) -> Result<String, String> {
     use windows_sys::Win32::Security::Credentials::{
         CRED_TYPE_GENERIC, CREDENTIALW, CredFree, CredReadW,
     };
 
-    let target = windows_credential_target_name(service, account);
     let target_w = windows_wide_null(&target);
     let mut credential: *mut CREDENTIALW = std::ptr::null_mut();
 
@@ -193,6 +247,27 @@ fn read_windows_generic_credential(service: &str, account: Option<&str>) -> Resu
     }?;
 
     Ok(value)
+}
+
+#[cfg(target_os = "windows")]
+fn read_external_keytar_credential(service: &str, account: &str) -> Result<String, String> {
+    if service != "copilot-cli" {
+        return Err("external credential service is not allowed".to_string());
+    }
+
+    let trimmed_account = account.trim();
+    if trimmed_account.is_empty()
+        || trimmed_account.len() > 256
+        || trimmed_account.contains('\0')
+        || trimmed_account.contains('\n')
+        || trimmed_account.contains('\r')
+        || !trimmed_account.starts_with("https://")
+    {
+        return Err("external credential account is not allowed".to_string());
+    }
+
+    let target = format!("{}/{}", service, trimmed_account);
+    read_windows_generic_credential_target(&target)
 }
 
 #[cfg(target_os = "windows")]
@@ -236,19 +311,6 @@ fn write_windows_generic_credential(
         return Err(windows_last_error_message());
     }
 
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn delete_windows_generic_credential(service: &str, account: Option<&str>) -> Result<(), String> {
-    use windows_sys::Win32::Security::Credentials::{CRED_TYPE_GENERIC, CredDeleteW};
-
-    let target = windows_credential_target_name(service, account);
-    let target_w = windows_wide_null(&target);
-    let ok = unsafe { CredDeleteW(target_w.as_ptr(), CRED_TYPE_GENERIC, 0) };
-    if ok == 0 {
-        return Err(windows_last_error_message());
-    }
     Ok(())
 }
 
@@ -617,6 +679,7 @@ pub fn inject_host_api<'js>(
     inject_env(ctx, &host, plugin_id)?;
     inject_http(ctx, &host, plugin_id)?;
     inject_keychain(ctx, &host, plugin_id)?;
+    inject_github_cli(ctx, &host, plugin_id)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
     inject_ccusage(ctx, &host, plugin_id)?;
@@ -2229,6 +2292,67 @@ fn inject_keychain<'js>(
         )?,
     )?;
 
+    let pid_external_read = plugin_id.to_string();
+    keychain_obj.set(
+        "readExternalKeytarPassword",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>,
+                  service: String,
+                  account: String|
+                  -> rquickjs::Result<String> {
+                if pid_external_read != "copilot" {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "external keychain read is not allowed for this plugin",
+                    ));
+                }
+
+                let redacted_account = redact_value(&account);
+                log::info!(
+                    "[plugin:{}] external keychain read: service={}, account={}",
+                    pid_external_read,
+                    service,
+                    redacted_account
+                );
+
+                #[cfg(target_os = "windows")]
+                {
+                    match read_external_keytar_credential(&service, &account) {
+                        Ok(value) => {
+                            log::info!(
+                                "[plugin:{}] external keychain read hit: service={}, account={}",
+                                pid_external_read,
+                                service,
+                                redacted_account
+                            );
+                            Ok(value)
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "[plugin:{}] external keychain read miss: service={}, account={}, error={}",
+                                pid_external_read,
+                                service,
+                                redacted_account,
+                                error
+                            );
+                            Err(Exception::throw_message(&ctx_inner, &error))
+                        }
+                    }
+                }
+
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let _ = (service, account);
+                    Err(Exception::throw_message(
+                        &ctx_inner,
+                        "external keychain API is only supported on Windows",
+                    ))
+                }
+            },
+        )?,
+    )?;
+
     let pid_write = plugin_id.to_string();
     keychain_obj.set(
         "writeGenericPassword",
@@ -2296,6 +2420,58 @@ fn inject_keychain<'js>(
     )?;
 
     host.set("keychain", keychain_obj)?;
+    Ok(())
+}
+
+fn inject_github_cli<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+) -> rquickjs::Result<()> {
+    let github_cli_obj = Object::new(ctx.clone())?;
+    let pid_read_auth_token = plugin_id.to_string();
+
+    github_cli_obj.set(
+        "readAuthToken",
+        Function::new(ctx.clone(), move |ctx_inner: Ctx<'_>| -> rquickjs::Result<String> {
+            if pid_read_auth_token != "copilot" {
+                return Err(Exception::throw_message(
+                    &ctx_inner,
+                    "GitHub CLI token read is not allowed for this plugin",
+                ));
+            }
+
+            log::info!("[plugin:{}] gh auth token read", pid_read_auth_token);
+
+            #[cfg(target_os = "windows")]
+            {
+                match read_github_cli_auth_token() {
+                    Ok(token) => {
+                        log::info!("[plugin:{}] gh auth token read hit", pid_read_auth_token);
+                        Ok(token)
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "[plugin:{}] gh auth token read failed: {}",
+                            pid_read_auth_token,
+                            error
+                        );
+                        Err(Exception::throw_message(&ctx_inner, &error))
+                    }
+                }
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                Err(Exception::throw_message(
+                    &ctx_inner,
+                    "GitHub CLI token API is only supported on Windows",
+                ))
+            }
+        })?,
+    )?;
+
+    host.set("githubCli", github_cli_obj)?;
     Ok(())
 }
 

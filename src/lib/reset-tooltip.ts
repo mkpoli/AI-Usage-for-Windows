@@ -11,7 +11,7 @@ const RESET_MONTH_DAY_FORMATTER = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
 })
 
-const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
+const RESET_SOON_THRESHOLD_MS = 60 * 1000
 
 function parseResetTimestamp(resetsAtIso: string): number | null {
   const resetsAtMs = Date.parse(resetsAtIso)

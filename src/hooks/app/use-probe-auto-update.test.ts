@@ -23,7 +23,7 @@ describe("useProbeAutoUpdate", () => {
     const { result } = renderHook(() =>
       useProbeAutoUpdate({
         pluginSettings: null,
-        autoUpdateInterval: 15,
+        autoUpdateInterval: 10,
         setLoadingForPlugins: vi.fn(),
         setErrorForPlugins: vi.fn(),
         startBatch: vi.fn(),
@@ -43,7 +43,7 @@ describe("useProbeAutoUpdate", () => {
     const { result } = renderHook(() =>
       useProbeAutoUpdate({
         pluginSettings: { order: ["codex"], disabled: [] },
-        autoUpdateInterval: 15,
+        autoUpdateInterval: 10,
         setLoadingForPlugins: vi.fn(),
         setErrorForPlugins: vi.fn(),
         startBatch: vi.fn(),
@@ -54,7 +54,7 @@ describe("useProbeAutoUpdate", () => {
       result.current.resetAutoUpdateSchedule()
     })
 
-    expect(result.current.autoUpdateNextAt).toBe(910_000)
+    expect(result.current.autoUpdateNextAt).toBe(610_000)
     nowSpy.mockRestore()
   })
 })

@@ -47,7 +47,7 @@ const defaultProps = {
   plugins: [{ id: "a", name: "Alpha", enabled: true }],
   onReorder: vi.fn(),
   onToggle: vi.fn(),
-  autoUpdateInterval: 5 as const,
+  autoUpdateInterval: 1 as const,
   onAutoUpdateIntervalChange: vi.fn(),
   themeMode: "system" as const,
   onThemeModeChange: vi.fn(),
@@ -60,17 +60,6 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
-  mobileSyncStatus: {
-    baseUrlConfigured: true,
-    credentialStored: false,
-    isLinked: false,
-    connection: null,
-  },
-  mobileSyncBusy: false,
-  mobileSyncError: null,
-  onMobileSyncLink: vi.fn(),
-  onMobileSyncSyncNow: vi.fn(),
-  onMobileSyncUnlink: vi.fn(),
 }
 
 afterEach(() => {
@@ -220,10 +209,4 @@ describe("SettingsPage", () => {
     expect(onStartOnLoginChange).toHaveBeenCalledWith(true)
   })
 
-  it("renders mobile sync pairing controls when no device is linked", () => {
-    render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("Mobile Sync")).toBeInTheDocument()
-    expect(screen.getByText("6-digit pairing code")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Link Mobile App" })).toBeInTheDocument()
-  })
 })

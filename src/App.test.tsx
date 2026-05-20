@@ -367,7 +367,7 @@ describe("App", () => {
       return null
     })
     state.loadPluginSettingsMock.mockResolvedValue({ order: ["a"], disabled: [] })
-    state.loadAutoUpdateIntervalMock.mockResolvedValue(15)
+    state.loadAutoUpdateIntervalMock.mockResolvedValue(10)
   })
 
   afterEach(() => {
@@ -772,8 +772,7 @@ describe("App", () => {
   })
 
   it("toggles plugins in settings", async () => {
-    // Use already-normalised settings so no init save fires ("b" is disabled
-    // because it is not in DEFAULT_ENABLED_PLUGINS = ["claude","codex"]).
+    // Use already-normalised settings so no init save fires.
     state.loadPluginSettingsMock.mockResolvedValue({ order: ["a", "b"], disabled: ["b"] })
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
@@ -1369,15 +1368,15 @@ describe("App", () => {
     await userEvent.click(settingsButtons[0])
 
     // Change interval - this triggers the if branch (enabledIds.length > 0)
-    await userEvent.click(await screen.findByRole("radio", { name: "1 hour" }))
+    await userEvent.click(await screen.findByRole("radio", { name: "10 min" }))
 
-    expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(60)
+    expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(10)
   })
 
   it("fires auto-update interval and schedules next", async () => {
     vi.useFakeTimers()
-    // Set a very short interval for testing (5 min = 300000ms)
-    state.loadAutoUpdateIntervalMock.mockResolvedValueOnce(5)
+    // Set a very short interval for testing (1 min = 60000ms)
+    state.loadAutoUpdateIntervalMock.mockResolvedValueOnce(1)
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
 
     render(<App />)
@@ -1388,8 +1387,8 @@ describe("App", () => {
     // Clear the initial batch call count
     const initialCalls = state.startBatchMock.mock.calls.length
 
-    // Advance time by 5 minutes to trigger the interval
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    // Advance time by 1 minute to trigger the interval
+    await vi.advanceTimersByTimeAsync(60 * 1000)
 
     // The interval should have fired, calling startBatch again
     await vi.waitFor(() =>
@@ -1403,7 +1402,7 @@ describe("App", () => {
     vi.useFakeTimers()
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
-    state.loadAutoUpdateIntervalMock.mockResolvedValueOnce(5)
+    state.loadAutoUpdateIntervalMock.mockResolvedValueOnce(1)
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
     // First call succeeds (initial batch), subsequent calls fail
     state.startBatchMock
@@ -1416,7 +1415,7 @@ describe("App", () => {
     await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
 
     // Advance time to trigger the interval (which will fail)
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    await vi.advanceTimersByTimeAsync(60 * 1000)
 
     await vi.waitFor(() =>
       expect(errorSpy).toHaveBeenCalledWith("Failed to start auto-update batch:", expect.any(Error))

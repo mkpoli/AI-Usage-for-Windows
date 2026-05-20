@@ -60,7 +60,7 @@ vi.mock("@/lib/runtime-info", () => ({
 
 vi.mock("@/lib/settings", () => ({
   arePluginSettingsEqual: arePluginSettingsEqualMock,
-  DEFAULT_AUTO_UPDATE_INTERVAL: 5,
+  DEFAULT_AUTO_UPDATE_INTERVAL: 1,
   DEFAULT_DISPLAY_MODE: "left",
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_MENUBAR_ICON_STYLE: "bars",
@@ -141,7 +141,7 @@ describe("useSettingsBootstrap", () => {
     loadPluginSettingsMock.mockResolvedValue({ order: ["codex"], disabled: [] })
     normalizePluginSettingsMock.mockImplementation((stored) => stored)
     arePluginSettingsEqualMock.mockReturnValue(true)
-    loadAutoUpdateIntervalMock.mockResolvedValue(15)
+    loadAutoUpdateIntervalMock.mockResolvedValue(10)
     loadThemeModeMock.mockResolvedValue("dark")
     loadDisplayModeMock.mockResolvedValue("used")
     loadResetTimerDisplayModeMock.mockResolvedValue("relative")

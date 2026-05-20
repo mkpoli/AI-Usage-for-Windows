@@ -349,6 +349,61 @@ describe("cursor plugin", () => {
     expect(totalLine.limit).toBe(100)
   })
 
+  it("does not infer team account from zero pooled limit on free plans", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: 1778999551075,
+            billingCycleEnd: 1781677951075,
+            planUsage: {
+              totalPercentUsed: 0,
+              autoPercentUsed: 0,
+              apiPercentUsed: 0,
+              remainingBonus: false,
+            },
+            spendLimitUsage: {
+              pooledLimit: 0,
+              pooledRemaining: 0,
+              individualLimit: 0,
+              limitType: "user",
+              overallLimit: 0,
+              overallRemaining: 0,
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            planInfo: { planName: "Free", price: "$0/mo" },
+          }),
+        }
+      }
+      if (String(opts.url).includes("/auth/usage") || String(opts.url).includes("cursor.com/api/usage")) {
+        throw new Error("unexpected request usage fallback")
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const totalLine = result.lines.find((line) => line.label === "Total usage")
+
+    expect(result.plan).toBe("Free")
+    expect(totalLine).toBeTruthy()
+    expect(totalLine.used).toBe(0)
+    expect(totalLine.limit).toBe(100)
+    expect(totalLine.format).toEqual({ kind: "percent" })
+  })
+
   it("renders percent-only usage when plan info is unavailable", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
@@ -574,6 +629,99 @@ describe("cursor plugin", () => {
     expect(reqLine.used).toBe(422)
     expect(reqLine.limit).toBe(500)
     expect(reqLine.format).toEqual({ kind: "count", suffix: "requests" })
+  })
+
+  it("uses Cursor auth usage endpoint before legacy request usage endpoint", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    const urls = []
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      urls.push(String(opts.url))
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            billingCycleStart: "1770539602363",
+            billingCycleEnd: "1770539602363",
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ planInfo: { planName: "Enterprise" } }),
+        }
+      }
+      if (String(opts.url).includes("/auth/usage")) {
+        expect(opts.headers.Authorization).toBe("Bearer " + accessToken)
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            "gpt-4": {
+              numRequests: 77,
+              maxRequestUsage: 500,
+            },
+            startOfMonth: "2026-02-01T06:12:57.000Z",
+          }),
+        }
+      }
+      throw new Error("unexpected request " + String(opts.url))
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const reqLine = result.lines.find((line) => line.label === "Requests")
+
+    expect(reqLine.used).toBe(77)
+    expect(reqLine.limit).toBe(500)
+    expect(urls.some((url) => url.includes("/auth/usage"))).toBe(true)
+    expect(urls.some((url) => url.includes("cursor.com/api/usage"))).toBe(false)
+  })
+
+  it("uses available request quota bucket when gpt-4 bucket is absent", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            billingCycleStart: "1770539602363",
+            billingCycleEnd: "1770539602363",
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ planInfo: { planName: "Enterprise" } }),
+        }
+      }
+      if (String(opts.url).includes("/auth/usage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            premium: {
+              numRequests: 18,
+              maxRequestUsage: 2000,
+            },
+            startOfMonth: "2026-02-01T06:12:57.000Z",
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const reqLine = result.lines.find((line) => line.label === "Requests")
+
+    expect(reqLine.used).toBe(18)
+    expect(reqLine.limit).toBe(2000)
   })
 
   it("falls back to enterprise request-based usage when planUsage.limit is missing", async () => {

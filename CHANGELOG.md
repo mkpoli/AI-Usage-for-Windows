@@ -1,17 +1,31 @@
 # Changelog
 
-## v0.2.0 - 2026-04-29
+## v0.1.2 - 2026-05-20
+
+### Changed
+
+- Antigravity quota rendering now preserves each visible model bucket instead of merging models into broad Gemini or Claude groups
+- Antigravity documentation now reflects model-specific quota lines such as Gemini 3.5 Flash, Gemini 3.1 Pro, Claude 4.6, and GPT-OSS
+- Gemini quota rendering now preserves model-specific Gemini 3.x bucket labels when Google exposes them, while older buckets still fall back to Pro and Flash
+- Gemini documentation now clarifies that Gemini app compute-based limits and Gemini API token accounting are separate from Gemini CLI / Code Assist quota tracking
+- Home Dashboard now includes Gemini 3.1 preview quota labels and Antigravity's current Gemini model quota labels
+- Antigravity duplicate model labels are collapsed to a single quota line
+
+## v0.1.1 - 2026-05-18
 
 ### Added
 
-- Windows-side Mobile Sync foundation for AI Usage for Mobile
-- Mobile Sync settings section with pairing, manual sync, and unlink controls
-- Secure Mobile Sync upload token storage in Windows Credential Manager
-- Snapshot normalization from current Windows provider state for mobile upload
+- GitHub Copilot provider support
+- 1-minute auto refresh option and 1-minute default refresh interval
 
 ### Fixed
 
 - Plugin enabled/disabled settings now persist across app restarts instead of re-enabling default providers during bootstrap
+
+### Removed
+
+- Google sign-in and mobile synchronization from the Windows settings screen
+- Firebase client integration and sync-specific runtime configuration
 
 ## v0.1.0 - 2026-04-27
 

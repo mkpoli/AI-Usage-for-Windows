@@ -7,8 +7,9 @@
   "icon": "icon.svg",
   "brandColor": "#4285F4",
   "lines": [
-    { "type": "progress", "label": "Gemini Pro", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Gemini Flash", "scope": "overview" },
-    { "type": "progress", "label": "Claude", "scope": "overview" }
+    { "type": "progress", "label": "Gemini 3.5 Flash (High)", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Gemini 3.5 Flash (Low)", "scope": "overview", "primaryOrder": 2 },
+    { "type": "progress", "label": "Gemini 3.5 Flash (Medium)", "scope": "overview" },
+    { "type": "progress", "label": "Gemini 3.1 Pro (High)", "scope": "overview", "primaryOrder": 3 }
   ]
 }
