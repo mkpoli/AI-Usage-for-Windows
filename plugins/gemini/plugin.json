@@ -7,8 +7,12 @@
   "icon": "icon.svg",
   "brandColor": "#4285F4",
   "lines": [
-    { "type": "progress", "label": "Pro", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Flash", "scope": "overview", "primaryOrder": 2 },
+    { "type": "progress", "label": "Gemini 3.1 Pro Preview", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Gemini 3.1 Flash Preview", "scope": "overview", "primaryOrder": 2 },
+    { "type": "progress", "label": "Gemini 3 Pro Preview", "scope": "overview" },
+    { "type": "progress", "label": "Gemini 3 Flash Preview", "scope": "overview" },
+    { "type": "progress", "label": "Pro", "scope": "overview" },
+    { "type": "progress", "label": "Flash", "scope": "overview" },
     { "type": "text", "label": "Account", "scope": "detail" }
   ]
 }

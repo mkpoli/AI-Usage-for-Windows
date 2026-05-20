@@ -149,6 +149,44 @@ describe("gemini plugin", () => {
     expect(result.lines.find((line) => line.label === "Gemini 3.5 Flash (High)")?.used).toBe(60)
   })
 
+  it("renders Gemini 3.1 preview quota labels", async () => {
+    const ctx = makeCtx()
+    const nowMs = 1_700_000_000_000
+    vi.spyOn(Date, "now").mockReturnValue(nowMs)
+
+    ctx.host.fs.writeText(
+      CREDS_PATH,
+      JSON.stringify({
+        access_token: "token",
+        refresh_token: "refresh-token",
+        expiry_date: nowMs + 3600_000,
+      })
+    )
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url === LOAD_CODE_ASSIST_URL) return { status: 200, bodyText: JSON.stringify({ tier: "standard-tier" }) }
+      if (url === PROJECTS_URL) return { status: 200, bodyText: JSON.stringify({ projects: [{ projectId: "gen-lang-client-preview" }] }) }
+      if (url === QUOTA_URL) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            quotaBuckets: [
+              { modelId: "gemini-3.1-pro-preview", remainingFraction: 0.99, resetTime: "2099-01-01T00:00:00Z" },
+              { modelId: "gemini-3.1-flash-preview", remainingFraction: 0.95, resetTime: "2099-01-01T00:00:00Z" },
+            ],
+          }),
+        }
+      }
+      throw new Error("unexpected url: " + url)
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const labels = result.lines.map((line) => line.label)
+    expect(labels).toContain("Gemini 3.1 Pro Preview")
+    expect(labels).toContain("Gemini 3.1 Flash Preview")
+  })
+
   it("preserves Gemini labels when quota values are nested under model configs", async () => {
     const ctx = makeCtx()
     const nowMs = 1_700_000_000_000

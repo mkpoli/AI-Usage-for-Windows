@@ -305,7 +305,7 @@
   }
 
   function buildModelLines(ctx, configs) {
-    var models = []
+    var byLabel = {}
     for (var i = 0; i < configs.length; i++) {
       var c = configs[i]
       var label = (typeof c.label === "string") ? c.label.trim() : ""
@@ -313,14 +313,17 @@
       var qi = c.quotaInfo
       var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
       var rtime = (qi && qi.resetTime) || undefined
-      models.push({
+      var model = {
         label: label,
         remainingFraction: frac,
         resetTime: rtime,
         sortKey: modelSortKey(label),
-      })
+      }
+      var existing = byLabel[label]
+      if (!existing || model.remainingFraction < existing.remainingFraction) byLabel[label] = model
     }
 
+    var models = Object.keys(byLabel).map(function (label) { return byLabel[label] })
     models.sort(function (a, b) {
       return a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0
     })

@@ -57,7 +57,9 @@ The response includes provisioned models and quota information. AI Usage filters
 ## Output Mapping
 
 - **Plan:** best-effort account plan name when available
-- **Model lines:** each visible Antigravity model quota bucket is shown as percent used, preserving labels such as `Gemini 3.5 Flash (High)`, `Gemini 3.5 Flash (Medium)`, `Gemini 3.1 Pro (High)`, `Gemini 3.1 Pro (Low)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and `GPT-OSS 120B (Medium)`
+- **Model lines:** each visible Antigravity model quota bucket is shown as percent used, preserving labels such as `Gemini 3.5 Flash (High)`, `Gemini 3.5 Flash (Low)`, `Gemini 3.5 Flash (Medium)`, `Gemini 3.1 Pro (High)`, `Gemini 3.1 Pro (Low)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and `GPT-OSS 120B (Medium)`
+- **Home dashboard:** focuses on `Gemini 3.5 Flash (High)`, `Gemini 3.5 Flash (Low)` / `Gemini 3.5 Flash (Medium)`, and `Gemini 3.1 Pro (High)` when those buckets are present
+- Duplicate model labels are collapsed to the bucket with the lowest remaining fraction
 - **Account:** account email/name when available
 
 ## Limitations

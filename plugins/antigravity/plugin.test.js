@@ -261,6 +261,33 @@ describe("antigravity plugin", () => {
     expect(low.used).toBe(20)
   })
 
+  it("deduplicates repeated model labels and keeps the lowest remaining bucket", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      configs: [
+        {
+          label: "Gemini 3.1 Pro (High)",
+          modelOrAlias: { model: "MODEL_PLACEHOLDER_M37" },
+          quotaInfo: { remainingFraction: 0.95, resetTime: "2026-02-08T09:10:56Z" },
+        },
+        {
+          label: "Gemini 3.1 Pro (High)",
+          modelOrAlias: { model: "MODEL_PLACEHOLDER_M38" },
+          quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" },
+        },
+      ],
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const highLines = result.lines.filter((l) => l.label === "Gemini 3.1 Pro (High)")
+    expect(highLines).toHaveLength(1)
+    expect(highLines[0].used).toBe(20)
+  })
+
   it("orders: Gemini (Pro, Flash), Claude (Opus, Sonnet), then others", async () => {
     const ctx = makeCtx()
     const discovery = makeDiscovery()

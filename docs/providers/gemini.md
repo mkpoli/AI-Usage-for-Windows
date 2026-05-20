@@ -44,8 +44,8 @@ These return explicit errors.
   - `free-tier` -> `Free`
   - `legacy-tier` -> `Legacy`
 - **Quota lines**: Gemini quota buckets returned by `retrieveUserQuota`
-  - model-specific labels such as `Gemini 3.5 Flash (High)` are preserved when
-    the API exposes them
+  - model-specific labels such as `Gemini 3.1 Pro Preview` and
+    `Gemini 3.1 Flash Preview` are preserved when the API exposes them
   - older generic buckets still fall back to `Pro` or `Flash`
 - **Account**: email from `id_token` claims
 
