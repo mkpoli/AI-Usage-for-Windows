@@ -108,6 +108,20 @@ fn is_supported_plugin_id(id: &str) -> bool {
     SUPPORTED_PLUGIN_IDS.contains(&id)
 }
 
+fn icon_mime_type(icon: &str) -> Result<&'static str, Box<dyn std::error::Error>> {
+    let extension = Path::new(icon)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    match extension.as_str() {
+        "svg" => Ok("image/svg+xml"),
+        "png" => Ok("image/png"),
+        _ => Err("plugin icon must be an SVG or PNG file".into()),
+    }
+}
+
 fn load_single_plugin(
     plugin_dir: &std::path::Path,
 ) -> Result<LoadedPlugin, Box<dyn std::error::Error>> {
@@ -149,7 +163,8 @@ fn load_single_plugin(
 
     let icon_file = plugin_dir.join(&manifest.icon);
     let icon_bytes = std::fs::read(&icon_file)?;
-    let icon_data_url = format!("data:image/svg+xml;base64,{}", STANDARD.encode(&icon_bytes));
+    let icon_mime = icon_mime_type(&manifest.icon)?;
+    let icon_data_url = format!("data:{};base64,{}", icon_mime, STANDARD.encode(&icon_bytes));
 
     Ok(LoadedPlugin {
         manifest,
@@ -330,6 +345,17 @@ mod tests {
         assert_eq!(manifest.links.len(), 2);
         assert_eq!(manifest.links[0].label, "Status");
         assert_eq!(manifest.links[1].url, "https://example.com/billing");
+    }
+
+    #[test]
+    fn icon_mime_type_supports_svg_and_png() {
+        assert_eq!(icon_mime_type("icon.svg").unwrap(), "image/svg+xml");
+        assert_eq!(icon_mime_type("icon.png").unwrap(), "image/png");
+    }
+
+    #[test]
+    fn icon_mime_type_rejects_unknown_extension() {
+        assert!(icon_mime_type("icon.ico").is_err());
     }
 
     #[test]

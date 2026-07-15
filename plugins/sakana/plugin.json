@@ -4,7 +4,7 @@
   "name": "Sakana AI",
   "version": "0.0.1",
   "entry": "plugin.js",
-  "icon": "icon.svg",
+  "icon": "icon.png",
   "brandColor": "#2975DB",
   "links": [
     { "label": "Console", "url": "https://console.sakana.ai/billing" },
