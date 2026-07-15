@@ -3,6 +3,7 @@
   const FIVE_HOUR_MS = 5 * 60 * 60 * 1000
   const WEEK_MS = 7 * 24 * 60 * 60 * 1000
   const DEFAULT_SESSION_COOKIE_NAME = "__Secure-authjs.session-token"
+  const CONFIG_PATHS = ["~/.ai-usage/config.json"]
   // Only the Auth.js session token authenticates the billing GET. The csrf-token
   // (checked on POST only) and callback-url cookies are unnecessary, so they are
   // dropped when a session token can be identified.
@@ -21,6 +22,56 @@
       ctx.host.log.warn(name + " read failed: " + String(e))
       return null
     }
+  }
+
+  function pickFirstString(values) {
+    for (let i = 0; i < values.length; i += 1) {
+      const value = readString(values[i])
+      if (value) return value
+    }
+    return null
+  }
+
+  // Reads the credential from the app config file (~/.ai-usage/config.json), the
+  // same file used for proxy settings. Supported shapes:
+  //   { "sakana": { "sessionToken": "eyJ..." } }
+  //   { "sakana": { "cookie": "__Secure-authjs.session-token=eyJ..." } }
+  //   { "sakana": { "token": "eyJ..." } }
+  //   { "sakanaSessionToken": "eyJ..." }   (flat fallback)
+  //   { "sakanaCookie": "..." }            (flat fallback)
+  function loadFromConfigFile(ctx) {
+    for (let i = 0; i < CONFIG_PATHS.length; i += 1) {
+      const path = CONFIG_PATHS[i]
+      let text = null
+      try {
+        if (!ctx.host.fs.exists(path)) continue
+        text = ctx.host.fs.readText(path)
+      } catch (e) {
+        ctx.host.log.warn("config read failed (" + path + "): " + String(e))
+        continue
+      }
+
+      const config = ctx.util.tryParseJson(text)
+      if (!config || typeof config !== "object") continue
+
+      const sakana = config.sakana && typeof config.sakana === "object" ? config.sakana : {}
+      const raw = pickFirstString([
+        sakana.sessionToken,
+        sakana.session_token,
+        sakana.token,
+        sakana.cookie,
+        config.sakanaSessionToken,
+        config.sakanaCookie,
+      ])
+      if (!raw) continue
+
+      const header = parseCookieInput(raw)
+      if (header) {
+        ctx.host.log.info("cookie header loaded from " + path)
+        return header
+      }
+    }
+    return null
   }
 
   function isSessionCookieName(name) {
@@ -158,7 +209,7 @@
       }
     }
 
-    return null
+    return loadFromConfigFile(ctx)
   }
 
   function fetchBilling(ctx, cookieHeader) {
@@ -334,7 +385,7 @@
   function probe(ctx) {
     const cookieHeader = loadCookieHeader(ctx)
     if (!cookieHeader) {
-      throw "Missing Sakana credentials. Set SAKANA_SESSION_TOKEN to the __Secure-authjs.session-token value from console.sakana.ai (or SAKANA_COOKIE)."
+      throw "Missing Sakana credentials. Add your __Secure-authjs.session-token from console.sakana.ai to ~/.ai-usage/config.json (sakana.sessionToken) or set SAKANA_SESSION_TOKEN."
     }
 
     let parsed

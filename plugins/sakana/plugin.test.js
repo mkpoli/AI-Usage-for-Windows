@@ -238,6 +238,82 @@ describe("sakana plugin", () => {
     }))
   })
 
+  it("loads the session token from ~/.ai-usage/config.json (sakana.sessionToken)", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation(() => null)
+    ctx.host.fs.writeText(
+      "~/.ai-usage/config.json",
+      JSON.stringify({ sakana: { sessionToken: "eyJhbGci.CONFIG.TOKENVALUE123456" } }),
+    )
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=eyJhbGci.CONFIG.TOKENVALUE123456",
+      }),
+    }))
+  })
+
+  it("extracts the session token from a config-file cookie value", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation(() => null)
+    ctx.host.fs.writeText(
+      "~/.ai-usage/config.json",
+      JSON.stringify({
+        sakana: {
+          cookie:
+            "__Host-authjs.csrf-token=abc%7Cdef; __Secure-authjs.session-token=CFGCOOKIETOKEN123456",
+        },
+      }),
+    )
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=CFGCOOKIETOKEN123456",
+      }),
+    }))
+  })
+
+  it("prefers env vars over the config file", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "SAKANA_SESSION_TOKEN" ? "ENVTOKENVALUE1234567" : null,
+    )
+    ctx.host.fs.writeText(
+      "~/.ai-usage/config.json",
+      JSON.stringify({ sakana: { sessionToken: "CONFIGTOKENVALUE123456" } }),
+    )
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=ENVTOKENVALUE1234567",
+      }),
+    }))
+  })
+
+  it("ignores an unrelated config file (proxy only)", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation(() => null)
+    ctx.host.fs.writeText(
+      "~/.ai-usage/config.json",
+      JSON.stringify({ proxy: { enabled: true, url: "socks5://127.0.0.1:10808" } }),
+    )
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Missing Sakana credentials")
+  })
+
   it("reassembles chunked session-token cookies", async () => {
     const ctx = makeCtx()
     const header = "__Secure-authjs.session-token.0=part0value000000; __Secure-authjs.session-token.1=part1value111111"
