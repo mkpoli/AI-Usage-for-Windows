@@ -231,7 +231,7 @@
     }
 
     if (ctx.util.isAuthStatus(resp.status) || (resp.status >= 300 && resp.status < 400)) {
-      throw "Sakana login required. Update SAKANA_COOKIE from console.sakana.ai."
+      throw "Sakana login required. Copy a fresh `__Secure-authjs.session-token` from console.sakana.ai into `~/.ai-usage/config.json`."
     }
     if (resp.status !== 200) {
       throw "Sakana billing fetch failed (HTTP " + resp.status + "). Try again later."
@@ -385,7 +385,7 @@
   function probe(ctx) {
     const cookieHeader = loadCookieHeader(ctx)
     if (!cookieHeader) {
-      throw "Missing Sakana credentials. Add your __Secure-authjs.session-token from console.sakana.ai to ~/.ai-usage/config.json (sakana.sessionToken) or set SAKANA_SESSION_TOKEN."
+      throw "Missing Sakana credentials. Copy your `__Secure-authjs.session-token` from console.sakana.ai into `~/.ai-usage/config.json` under `sakana.sessionToken`."
     }
 
     let parsed
