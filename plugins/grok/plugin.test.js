@@ -1,0 +1,148 @@
+import { beforeAll, describe, expect, it, vi } from "vitest"
+import { makeCtx } from "../test-helpers.js"
+
+let plugin = null
+
+beforeAll(async () => {
+  await import("./plugin.js")
+  plugin = globalThis.__ai_usage_plugin
+})
+
+function bytes(...vals) {
+  return Buffer.from(vals)
+}
+
+function varint(value) {
+  const out = []
+  let n = Number(value)
+  while (n > 127) {
+    out.push((n & 0x7f) | 0x80)
+    n = Math.floor(n / 128)
+  }
+  out.push(n)
+  return bytes(...out)
+}
+
+function key(field, wire) {
+  return varint(field * 8 + wire)
+}
+
+function msg(field, body) {
+  return Buffer.concat([key(field, 2), varint(body.length), body])
+}
+
+function f32(field, value) {
+  const buf = Buffer.alloc(4)
+  buf.writeFloatLE(value, 0)
+  return Buffer.concat([key(field, 5), buf])
+}
+
+function enumField(field, value) {
+  return Buffer.concat([key(field, 0), varint(value)])
+}
+
+function boolField(field, value) {
+  return enumField(field, value ? 1 : 0)
+}
+
+function timestamp(seconds) {
+  return Buffer.concat([enumField(1, seconds)])
+}
+
+function usagePeriod() {
+  return Buffer.concat([
+    enumField(1, 2),
+    msg(3, timestamp(4070908800)),
+  ])
+}
+
+function productUsage(product, percent) {
+  return Buffer.concat([
+    enumField(1, product),
+    f32(2, percent),
+  ])
+}
+
+function grokUsageResponse({ pool = 62.5, build = 25 } = {}) {
+  const config = Buffer.concat([
+    f32(1, pool),
+    msg(7, productUsage(2, build)),
+    msg(8, usagePeriod()),
+    boolField(11, true),
+  ])
+  const response = msg(1, config)
+  const frame = Buffer.concat([bytes(0), Buffer.alloc(4), response])
+  frame.writeUInt32BE(response.length, 1)
+  return frame.toString("base64")
+}
+
+function makeGrokCtx({ cookie = "grok_session=abc", bodyBase64 = grokUsageResponse() } = {}) {
+  const ctx = makeCtx()
+  ctx.host.env.get = vi.fn((name) => (name === "GROK_COOKIE" ? cookie : null))
+  ctx.host.http.request.mockReturnValue({
+    status: 200,
+    headers: { "grpc-status": "0" },
+    bodyText: "",
+    bodyBase64,
+  })
+  return ctx
+}
+
+describe("grok plugin", () => {
+  it("throws when credentials are missing", async () => {
+    const ctx = makeCtx()
+    const result = () => plugin.probe(ctx)
+    expect(result).toThrow("Missing Grok credentials")
+  })
+
+  it("fetches Grok usage over grpc-web and renders pool plus Build", async () => {
+    const ctx = makeGrokCtx()
+    const result = plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      method: "POST",
+      url: "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig",
+      bodyBase64: expect.any(String),
+    }))
+    const pool = result.lines.find((line) => line.label === "Usage pool")
+    const build = result.lines.find((line) => line.label === "Grok Build")
+    expect(pool).toMatchObject({ type: "progress", used: 62.5, limit: 100, format: { kind: "percent" } })
+    expect(build).toMatchObject({ type: "progress", used: 25, limit: 100, format: { kind: "percent" } })
+    expect(result.lines.find((line) => line.label === "Period")?.value).toBe("Weekly · resets 2099-01-01")
+  })
+
+  it("loads cookie from config when env is empty", async () => {
+    const ctx = makeGrokCtx({ cookie: null })
+    ctx.host.env.get = vi.fn(() => null)
+    ctx.host.fs.exists = (path) => path === "~/.ai-usage/config.json"
+    ctx.host.fs.readText = () => JSON.stringify({ grok: { cookie: "grok_session=from-config" } })
+
+    plugin.probe(ctx)
+
+    const headers = ctx.host.http.request.mock.calls[0][0].headers
+    expect(headers.Cookie).toBe("grok_session=from-config")
+  })
+
+  it("accepts a DevTools cookie table paste", async () => {
+    const table = "grok_session\tabc123\tgrok.com\t/\tSession\t20\t✓\t✓\tLax"
+    const ctx = makeGrokCtx({ cookie: table })
+
+    plugin.probe(ctx)
+
+    const headers = ctx.host.http.request.mock.calls[0][0].headers
+    expect(headers.Cookie).toBe("grok_session=abc123")
+  })
+
+  it("throws login required on unauthenticated grpc status", async () => {
+    const ctx = makeGrokCtx()
+    ctx.host.http.request.mockReturnValue({ status: 200, headers: { "grpc-status": "16" }, bodyText: "", bodyBase64: "" })
+
+    expect(() => plugin.probe(ctx)).toThrow("Grok login required")
+  })
+
+  it("throws parse error when response frame is missing", async () => {
+    const ctx = makeGrokCtx({ bodyBase64: "" })
+
+    expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
+  })
+})
