@@ -21,6 +21,20 @@ const BILLING_HTML = `
 </main>
 `
 
+const SUBSCRIPTION_HTML = BILLING_HTML.replace(
+  "<main>",
+  `<main>
+  <section>
+    <h2>Subscription</h2>
+    <span>Active</span>
+    <div>
+      <p class="font-semibold text-3xl">Max</p>
+      <p>$200/mo</p>
+    </div>
+    <p>Renews on July 22, 2026</p>
+  </section>`,
+)
+
 function mockCookie(ctx, value = "session=abc; theme=dark") {
   ctx.host.env.get.mockImplementation((name) => (name === "SAKANA_COOKIE" ? value : null))
 }
@@ -87,6 +101,27 @@ describe("sakana plugin", () => {
       format: { kind: "percent" },
       periodDurationMs: 7 * 24 * 60 * 60 * 1000,
       resetsAt: "2026-06-29T00:00:00.000Z",
+    })
+  })
+
+  it("renders subscription status, plan, price, and renewal", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockBilling(ctx, SUBSCRIPTION_HTML)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max $200/mo")
+    expect(result.lines.find((line) => line.label === "Subscription")).toEqual({
+      type: "text",
+      label: "Subscription",
+      value: "Active · Max · $200/mo",
+    })
+    expect(result.lines.find((line) => line.label === "Renewal")).toEqual({
+      type: "text",
+      label: "Renewal",
+      value: "Renews on July 22, 2026",
     })
   })
 

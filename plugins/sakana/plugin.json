@@ -12,6 +12,8 @@
   ],
   "lines": [
     { "type": "progress", "label": "5-hour", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Weekly", "scope": "overview" }
+    { "type": "progress", "label": "Weekly", "scope": "overview" },
+    { "type": "text", "label": "Subscription", "scope": "detail" },
+    { "type": "text", "label": "Renewal", "scope": "detail" }
   ]
 }
