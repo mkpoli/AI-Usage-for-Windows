@@ -8,6 +8,7 @@
   "brandColor": "#050505",
   "links": [
     { "label": "Usage", "url": "https://grok.com/?_s=usage" },
+    { "label": "Billing", "url": "https://grok.com/?_s=billing" },
     { "label": "Grok Build", "url": "https://grok.com/build" },
     { "label": "Pricing", "url": "https://x.ai/pricing" }
   ],

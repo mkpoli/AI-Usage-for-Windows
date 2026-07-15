@@ -5,12 +5,30 @@ Tracks xAI Grok usage from the Grok web usage pool.
 ## Data source
 
 - **Page:** `https://grok.com/?_s=usage`
+- **Billing:** `https://grok.com/?_s=billing`
 - **Pricing:** `https://x.ai/pricing`
-- **Endpoint:** `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`
-- **Protocol:** gRPC-Web protobuf
+- **Usage endpoint:** `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`
+- **Plan endpoint:** `GET https://grok.com/rest/subscriptions`
+- **Protocols:** gRPC-Web protobuf and JSON
 - **Auth:** grok.com browser cookies
 
-The usage response contains a shared usage pool and per-product rows. AI Usage shows the shared pool and the `GROK_BUILD` product row.
+The usage response contains a shared usage pool and per-product rows. AI Usage shows the shared pool and the `GROK_BUILD` product row. The subscription response supplies the plan shown in the provider header.
+
+## Plans
+
+The plan endpoint can return Grok and X subscription tiers. AI Usage uses these labels:
+
+| Subscription tier | Display label |
+|---|---|
+| No active subscription | `Free` |
+| `SUBSCRIPTION_TIER_X_BASIC` | `X Basic` |
+| `SUBSCRIPTION_TIER_X_PREMIUM` | `X Premium` |
+| `SUBSCRIPTION_TIER_X_PREMIUM_PLUS` | `X Premium+` |
+| `SUBSCRIPTION_TIER_SUPER_GROK_LITE` | `SuperGrok Lite` |
+| `SUBSCRIPTION_TIER_GROK_PRO` | `SuperGrok` |
+| `SUBSCRIPTION_TIER_SUPER_GROK_PRO` | `SuperGrok Heavy` |
+
+When several subscriptions are active, the provider shows the highest tier. Usage remains available when the plan endpoint is temporarily unavailable.
 
 ## Setup
 

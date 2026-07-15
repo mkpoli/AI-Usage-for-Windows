@@ -493,6 +493,7 @@ fn redact_body(body: &str) -> String {
         "idToken",
         "accessToken",
         "refreshToken",
+        "id",
         "user_id",
         "userId",
         "account_id",
@@ -501,6 +502,10 @@ fn redact_body(body: &str) -> String {
         "teamId",
         "payment_id",
         "paymentId",
+        "subscription_id",
+        "subscriptionId",
+        "customer_id",
+        "customerId",
         "profile_arn",
         "profileArn",
         "email",
@@ -3271,6 +3276,25 @@ mod tests {
             "expected path marker, got: {}",
             redacted
         );
+    }
+
+    #[test]
+    fn redact_body_redacts_subscription_and_customer_ids() {
+        let body = r#"{"id":"sub_generic123456789","subscriptionId":"sub_1234567890abcdef","customerId":"cus_abcdef1234567890","subscription_id":"sub_zyxwvutsrqponmlk","customer_id":"cus_0123456789abcdef"}"#;
+        let redacted = redact_body(body);
+        for secret in [
+            "sub_generic123456789",
+            "sub_1234567890abcdef",
+            "cus_abcdef1234567890",
+            "sub_zyxwvutsrqponmlk",
+            "cus_0123456789abcdef",
+        ] {
+            assert!(
+                !redacted.contains(secret),
+                "subscription and customer ids must be redacted, got: {}",
+                redacted
+            );
+        }
     }
 
     #[test]
