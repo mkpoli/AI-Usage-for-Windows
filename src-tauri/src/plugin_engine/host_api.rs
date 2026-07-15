@@ -16,7 +16,7 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-const WHITELISTED_ENV_VARS: [&str; 21] = [
+const WHITELISTED_ENV_VARS: [&str; 22] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -38,6 +38,7 @@ const WHITELISTED_ENV_VARS: [&str; 21] = [
     "GH_TOKEN",
     "GITHUB_TOKEN",
     "SAKANA_COOKIE",
+    "SAKANA_SESSION_TOKEN",
 ];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -2857,7 +2858,7 @@ mod tests {
             "CLAUDE_LOCAL_OAUTH_API_BASE",
         ];
 
-        let sakana_env_vars = ["SAKANA_COOKIE"];
+        let sakana_env_vars = ["SAKANA_COOKIE", "SAKANA_SESSION_TOKEN"];
 
         for name in claude_env_vars {
             assert!(

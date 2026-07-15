@@ -38,7 +38,7 @@ describe("sakana plugin", () => {
   it("throws when cookie header is missing", async () => {
     const ctx = makeCtx()
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Missing SAKANA_COOKIE")
+    expect(() => plugin.probe(ctx)).toThrow("Missing Sakana credentials")
   })
 
   it("fetches billing with normalized cookie header", async () => {
@@ -131,6 +131,127 @@ describe("sakana plugin", () => {
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Usage limit windows were not found")
+  })
+
+  it("extracts table-pasted session tokens that contain equals padding", async () => {
+    const ctx = makeCtx()
+    const tablePaste = "__Secure-authjs.session-token\tTOKEN.WITH.PADDING==\tconsole.sakana.ai\t/\t2026-07-22T15:35:52.674Z\t2875\t\u2713\t\u2713\tLax"
+    ctx.host.env.get.mockImplementation((name) => (name === "SAKANA_COOKIE" ? tablePaste : null))
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=TOKEN.WITH.PADDING==",
+      }),
+    }))
+  })
+
+  it("extracts only the session token from a DevTools cookies table paste", async () => {
+    const ctx = makeCtx()
+    const tablePaste = [
+      "__Host-authjs.csrf-token\taa48ef6e0fd49ce6%7Cbad53cc9f629\tconsole.sakana.ai\t/\tSession\t155\t\u2713\t\u2713\tLax\t\t\tMedium",
+      "__Secure-authjs.callback-url\thttps%3A%2F%2Fconsole.sakana.ai%2Flogin\tconsole.sakana.ai\t/\tSession\t67\t\u2713\t\u2713\tLax\t\t\tMedium",
+      "__Secure-authjs.session-token\teyJhbGciOiJkaXIiLCJlbmMiOiJ.SESSIONVALUE.KtLh0yTKyf6\tconsole.sakana.ai\t/\t2026-07-22T15:35:52.674Z\t2875\t\u2713\t\u2713\tLax\t\t\tMedium",
+    ].join("\n")
+    ctx.host.env.get.mockImplementation((name) => (name === "SAKANA_COOKIE" ? tablePaste : null))
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=eyJhbGciOiJkaXIiLCJlbmMiOiJ.SESSIONVALUE.KtLh0yTKyf6",
+      }),
+    }))
+  })
+
+  it("keeps only the session token from a full cookie header", async () => {
+    const ctx = makeCtx()
+    const header = "Cookie: __Host-authjs.csrf-token=abc%7Cdef; __Secure-authjs.callback-url=x; __Secure-authjs.session-token=TOKENVALUE123456"
+    ctx.host.env.get.mockImplementation((name) => (name === "SAKANA_COOKIE" ? header : null))
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=TOKENVALUE123456",
+      }),
+    }))
+  })
+
+  it("accepts a bare session token with padding", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "SAKANA_SESSION_TOKEN" ? "eyJhbGciOiJkaXIi.BARE.TOKENVALUE123456==" : null,
+    )
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=eyJhbGciOiJkaXIi.BARE.TOKENVALUE123456==",
+      }),
+    }))
+  })
+
+  it("accepts a bare session token via SAKANA_SESSION_TOKEN", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "SAKANA_SESSION_TOKEN" ? "eyJhbGciOiJkaXIi.BARE.TOKENVALUE123456" : null,
+    )
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=eyJhbGciOiJkaXIi.BARE.TOKENVALUE123456",
+      }),
+    }))
+  })
+
+  it("prefers SAKANA_SESSION_TOKEN over SAKANA_COOKIE", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "SAKANA_SESSION_TOKEN") return "PREFERREDTOKENVALUE123456"
+      if (name === "SAKANA_COOKIE") return "__Secure-authjs.session-token=FROMCOOKIE12345678"
+      return null
+    })
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=PREFERREDTOKENVALUE123456",
+      }),
+    }))
+  })
+
+  it("reassembles chunked session-token cookies", async () => {
+    const ctx = makeCtx()
+    const header = "__Secure-authjs.session-token.0=part0value000000; __Secure-authjs.session-token.1=part1value111111"
+    ctx.host.env.get.mockImplementation((name) => (name === "SAKANA_COOKIE" ? header : null))
+    mockBilling(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token.0=part0value000000; __Secure-authjs.session-token.1=part1value111111",
+      }),
+    }))
   })
 
   it("rejects out-of-range percentages", async () => {

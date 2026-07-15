@@ -2,6 +2,11 @@
   const BILLING_URL = "https://console.sakana.ai/billing"
   const FIVE_HOUR_MS = 5 * 60 * 60 * 1000
   const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+  const DEFAULT_SESSION_COOKIE_NAME = "__Secure-authjs.session-token"
+  // Only the Auth.js session token authenticates the billing GET. The csrf-token
+  // (checked on POST only) and callback-url cookies are unnecessary, so they are
+  // dropped when a session token can be identified.
+  const SESSION_COOKIE_BASES = ["__secure-authjs.session-token", "authjs.session-token"]
 
   function readString(value) {
     if (typeof value !== "string") return null
@@ -9,49 +14,151 @@
     return trimmed ? trimmed : null
   }
 
-  function loadCookieHeader(ctx) {
-    let value = null
+  function readEnv(ctx, name) {
     try {
-      value = ctx.host.env.get("SAKANA_COOKIE")
+      return readString(ctx.host.env.get(name))
     } catch (e) {
-      ctx.host.log.warn("SAKANA_COOKIE read failed: " + String(e))
+      ctx.host.log.warn(name + " read failed: " + String(e))
+      return null
     }
-
-    const cookie = normalizeCookieHeader(value)
-    if (!cookie) return null
-    ctx.host.log.info("cookie header loaded from SAKANA_COOKIE")
-    return cookie
   }
 
-  function normalizeCookieHeader(value) {
-    const raw = readString(value)
-    if (!raw) return null
+  function isSessionCookieName(name) {
+    const lower = String(name || "").trim().toLowerCase()
+    if (!lower) return false
+    return SESSION_COOKIE_BASES.some(function (base) {
+      // Match the exact cookie name and Auth.js's chunked variants (`.0`, `.1`, ...).
+      return lower === base || lower.indexOf(base + ".") === 0
+    })
+  }
 
-    const lines = raw
-      .split(/[\r\n]+/)
-      .map((line) => line.trim())
+  function looksLikeBareToken(value) {
+    return /^[A-Za-z0-9._~%+/-]{16,}={0,2}$/.test(value)
+  }
+
+  function dedupeCookiePairs(pairs) {
+    const order = []
+    const byName = {}
+    for (let i = 0; i < pairs.length; i += 1) {
+      const pair = pairs[i]
+      if (!Object.prototype.hasOwnProperty.call(byName, pair.name)) order.push(pair.name)
+      byName[pair.name] = pair.value
+    }
+    return order
+      .map(function (name) {
+        return name + "=" + byName[name]
+      })
+      .join("; ")
+  }
+
+  function parseCookieTableRow(line) {
+    if (!/(\t|\s{2,})/.test(line)) return null
+    const cols = line
+      .split(/\t+|\s{2,}/)
+      .map(function (col) {
+        return col.trim()
+      })
       .filter(Boolean)
+    if (cols.length < 2) return null
 
-    let cookie = ""
+    const name = cols[0]
+    const value = cols[1]
+    // Reject normal cookie-header fragments such as `a=b;  c=d`; the first
+    // column in a browser Cookies table is always just the cookie name.
+    if (!/^[A-Za-z0-9_.-]+$/.test(name)) return null
+    if (!value) return null
+    return { name: name, value: value }
+  }
+
+  // Accepts any of the following and returns a minimal cookie header:
+  //   - a full "Cookie: a=b; c=d" header (with or without the leading "Cookie:")
+  //   - "a=b; c=d" pairs on one or many lines
+  //   - the browser DevTools "Cookies" table paste, where each line is
+  //     `name <TAB> value <TAB> domain <TAB> ...` (tab- or multi-space-separated)
+  //   - a single bare session-token value
+  // When an Auth.js session token is present, only that cookie is kept; the
+  // csrf-token and callback-url rows are discarded. Otherwise every parsed pair
+  // is preserved.
+  function parseCookieInput(raw) {
+    const text = readString(raw)
+    if (!text) return null
+
+    const pairs = []
+    const bareCandidates = []
+    const lines = text.split(/[\r\n]+/)
+
     for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i]
-      const match = line.match(/^cookie\s*:\s*(.+)$/i)
-      if (match) {
-        cookie = match[1].trim()
-        break
+      let line = lines[i].trim()
+      if (!line) continue
+
+      const headerMatch = line.match(/^(?:set-)?cookie\s*:\s*(.*)$/i)
+      if (headerMatch) line = headerMatch[1].trim()
+      if (!line) continue
+
+      const tablePair = parseCookieTableRow(line)
+      if (tablePair) {
+        pairs.push(tablePair)
+        continue
       }
-      if (!/:\s*/.test(line)) {
-        cookie = line
-        break
+
+      if (looksLikeBareToken(line)) {
+        bareCandidates.push(line)
+        continue
+      }
+
+      if (line.indexOf("=") === -1) continue
+
+      const segments = line.split(";")
+      for (let j = 0; j < segments.length; j += 1) {
+        const segment = segments[j].trim()
+        if (!segment) continue
+        const eq = segment.indexOf("=")
+        if (eq <= 0) continue
+        const name = segment.slice(0, eq).trim()
+        const value = segment.slice(eq + 1).trim()
+        if (name && value) pairs.push({ name: name, value: value })
       }
     }
 
-    if (!cookie) return null
-    return cookie
-      .split(";")
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .join("; ")
+    if (pairs.length) {
+      const sessionPairs = pairs.filter(function (pair) {
+        return isSessionCookieName(pair.name)
+      })
+      return dedupeCookiePairs(sessionPairs.length ? sessionPairs : pairs)
+    }
+
+    if (bareCandidates.length) {
+      // The session token is the long value; pick the longest bare candidate.
+      let token = bareCandidates[0]
+      for (let k = 1; k < bareCandidates.length; k += 1) {
+        if (bareCandidates[k].length > token.length) token = bareCandidates[k]
+      }
+      return DEFAULT_SESSION_COOKIE_NAME + "=" + token
+    }
+
+    return null
+  }
+
+  function loadCookieHeader(ctx) {
+    const token = readEnv(ctx, "SAKANA_SESSION_TOKEN")
+    if (token) {
+      const header = parseCookieInput(token)
+      if (header) {
+        ctx.host.log.info("cookie header loaded from SAKANA_SESSION_TOKEN")
+        return header
+      }
+    }
+
+    const cookie = readEnv(ctx, "SAKANA_COOKIE")
+    if (cookie) {
+      const header = parseCookieInput(cookie)
+      if (header) {
+        ctx.host.log.info("cookie header loaded from SAKANA_COOKIE")
+        return header
+      }
+    }
+
+    return null
   }
 
   function fetchBilling(ctx, cookieHeader) {
@@ -227,7 +334,7 @@
   function probe(ctx) {
     const cookieHeader = loadCookieHeader(ctx)
     if (!cookieHeader) {
-      throw "Missing SAKANA_COOKIE. Copy the Cookie header from console.sakana.ai/billing after signing in."
+      throw "Missing Sakana credentials. Set SAKANA_SESSION_TOKEN to the __Secure-authjs.session-token value from console.sakana.ai (or SAKANA_COOKIE)."
     }
 
     let parsed
