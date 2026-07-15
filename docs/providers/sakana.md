@@ -64,9 +64,19 @@ AI Usage reads these variables from the process environment or the persisted Win
 - **Auth:** the `__Secure-authjs.session-token` cookie
 - **5-hour usage:** parses the `5-hour` quota card percentage and reset timestamp
 - **Weekly usage:** parses the `Weekly` quota card percentage and reset timestamp
+- **Subscription:** parses status, plan, monthly price, and renewal date
 - **Reset timezone:** server-rendered reset timestamps are interpreted as UTC
 
-The Sakana public API supports Fugu chat and model requests. AI Usage reads quota windows from the console billing page, where the 5-hour and weekly limits are rendered.
+The Sakana public API supports Fugu chat and model requests. AI Usage reads quota windows and subscription details from the console billing page.
+
+## Lines
+
+| Line | Source | Scope |
+|---|---|---|
+| `5-hour` | Five-hour quota card | Overview |
+| `Weekly` | Weekly quota card | Overview |
+| `Subscription` | Status, plan, and monthly price | Detail |
+| `Renewal` | Subscription renewal or end date | Detail |
 
 ## Errors
 

@@ -250,6 +250,15 @@
       .trim()
   }
 
+  function stripTags(text) {
+    return stripHtmlComments(String(text || "").replace(/<[^>]+>/g, " "))
+      .replace(/&amp;/g, "&")
+      .replace(/&#x27;/g, "'")
+      .replace(/&quot;/g, "\"")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+  }
+
   function escapeRegex(text) {
     return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   }
@@ -349,6 +358,32 @@
     )
   }
 
+  function parseSubscription(html) {
+    const heading = firstMatch("<h2[^>]*>\\s*Subscription\\s*<\\/h2>", html, "i")
+    if (!heading) return null
+    const section = html.slice(heading.index, heading.index + 6000)
+    const status = capture("<span[^>]*>\\s*(Active|Trial|Ending|Needs attention|Not subscribed)\\s*<\\/span>", section, "i")
+    const plan = capture("<p[^>]*class=\\\"[^\\\"]*text-3xl[^\\\"]*\\\"[^>]*>\\s*([^<]+?)\\s*<\\/p>", section, "i")
+    let price = null
+    if (plan) {
+      const planPattern = "<p[^>]*class=\\\"[^\\\"]*text-3xl[^\\\"]*\\\"[^>]*>\\s*" + escapeRegex(plan) + "\\s*<\\/p>\\s*<p[^>]*>\\s*([^<]+?)\\s*<\\/p>"
+      price = capture(planPattern, section, "i")
+    }
+    const renewal = capture("<p[^>]*>\\s*((?:Renews|Ends) on [^<]+?)\\s*<\\/p>", section, "i")
+    const parts = []
+    if (status) parts.push(stripTags(status))
+    if (plan) parts.push(stripTags(plan))
+    if (price) parts.push(stripTags(price))
+    return parts.length || renewal
+      ? {
+          summary: parts.join(" · "),
+          plan: plan ? stripTags(plan) : null,
+          price: price ? stripTags(price) : null,
+          renewal: renewal ? stripTags(renewal) : null,
+        }
+      : null
+  }
+
   function parseBillingHTML(html) {
     const fiveHour = parseWindow("5-hour", html)
     const weekly = parseWindow("Weekly", html)
@@ -361,11 +396,15 @@
     const planPrice = parsePlanPrice(html)
     if (planName) planParts.push(planName)
     if (planPrice) planParts.push(planPrice)
+    const subscription = parseSubscription(html)
 
     return {
-      plan: planParts.length ? planParts.join(" ") : null,
+      plan: subscription && subscription.plan
+        ? [subscription.plan, subscription.price].filter(Boolean).join(" ")
+        : planParts.length ? planParts.join(" ") : null,
       fiveHour,
       weekly,
+      subscription,
     }
   }
 
@@ -400,6 +439,12 @@
     const lines = []
     addProgress(lines, ctx, "5-hour", parsed.fiveHour, FIVE_HOUR_MS)
     addProgress(lines, ctx, "Weekly", parsed.weekly, WEEK_MS)
+    if (parsed.subscription && parsed.subscription.summary) {
+      lines.push(ctx.line.text({ label: "Subscription", value: parsed.subscription.summary }))
+    }
+    if (parsed.subscription && parsed.subscription.renewal) {
+      lines.push(ctx.line.text({ label: "Renewal", value: parsed.subscription.renewal }))
+    }
 
     return { plan: parsed.plan, lines }
   }
