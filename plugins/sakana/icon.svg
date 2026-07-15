@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sakana AI">
+  <rect width="64" height="64" rx="14" fill="#2975DB"/>
+  <path d="M12 33c7-10 19-16 35-16l9-6-3 14 3 14-9-6c-16 0-28-6-35-16Z" fill="#fff"/>
+  <circle cx="42" cy="25" r="3" fill="#2975DB"/>
+  <path d="M17 33c4 3 8 5 13 5" fill="none" stroke="#2975DB" stroke-width="4" stroke-linecap="round"/>
+</svg>
