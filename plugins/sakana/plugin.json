@@ -4,8 +4,8 @@
   "name": "Sakana AI",
   "version": "0.0.1",
   "entry": "plugin.js",
-  "icon": "icon.png",
-  "brandColor": "#2975DB",
+  "icon": "icon.svg",
+  "brandColor": "#E10600",
   "links": [
     { "label": "Console", "url": "https://console.sakana.ai/billing" },
     { "label": "Fugu docs", "url": "https://console.sakana.ai/get-started" }
