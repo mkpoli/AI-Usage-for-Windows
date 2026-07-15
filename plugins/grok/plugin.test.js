@@ -133,6 +133,24 @@ describe("grok plugin", () => {
     expect(headers.Cookie).toBe("grok_session=abc123")
   })
 
+
+  it("drops unrelated cookies from a DevTools table paste", async () => {
+    const table = [
+      "__stripe_mid\tstripe-value\t.grok.com\t/\t2027-01-01\t54",
+      "sso\tsso-value\t.grok.com\t/\t2027-01-01\t155\t✓\t✓\tLax",
+      "cf_clearance\tcf-value\t.grok.com\t/\t2027-01-01\t417\t✓\t✓\tNone",
+      "mp_ea93da913ddb66b6372b89d97b1029ac_mixpanel\tmixpanel-value\t.grok.com\t/\t2027-01-01\t546",
+      "grok_device_id\tdevice-value\t.grok.com\t/\t2027-01-01\t50",
+      "x-userid\tuser-value\t.grok.com\t/\tSession\t44",
+    ].join("\n")
+    const ctx = makeGrokCtx({ cookie: table })
+
+    plugin.probe(ctx)
+
+    const headers = ctx.host.http.request.mock.calls[0][0].headers
+    expect(headers.Cookie).toBe("sso=sso-value; cf_clearance=cf-value; grok_device_id=device-value; x-userid=user-value")
+  })
+
   it("throws login required on unauthenticated grpc status", async () => {
     const ctx = makeGrokCtx()
     ctx.host.http.request.mockReturnValue({ status: 200, headers: { "grpc-status": "16" }, bodyText: "", bodyBase64: "" })

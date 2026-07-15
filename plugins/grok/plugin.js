@@ -4,6 +4,14 @@
   const PRODUCT_GROK_BUILD = 2
   const USAGE_PERIOD_MONTHLY = 1
   const USAGE_PERIOD_WEEKLY = 2
+  const COOKIE_ALLOWLIST = {
+    "__cf_bm": true,
+    "cf_clearance": true,
+    "grok_device_id": true,
+    "sso": true,
+    "sso-rw": true,
+    "x-userid": true,
+  }
 
   function readString(value) {
     if (typeof value !== "string") return null
@@ -71,7 +79,10 @@
       }
     }
     if (!pairs.length) return null
-    return dedupeCookiePairs(pairs)
+    const selected = pairs.filter(function (pair) {
+      return COOKIE_ALLOWLIST[String(pair.name || "").toLowerCase()]
+    })
+    return dedupeCookiePairs(selected.length ? selected : pairs)
   }
 
   function parseCookieTableRow(line) {

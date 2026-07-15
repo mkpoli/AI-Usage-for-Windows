@@ -15,18 +15,18 @@ The usage response contains a shared usage pool and per-product rows. AI Usage s
 
 1. Sign in at `https://grok.com/?_s=usage` in a browser.
 2. Open DevTools → Application or Storage → Cookies → `https://grok.com`.
-3. Copy the grok.com cookie values needed for the usage page.
-4. Add them to `~/.ai-usage/config.json`:
+3. Copy the Cookies table rows for grok.com.
+4. Add the paste to `~/.ai-usage/config.json`:
 
 ```json
 {
   "grok": {
-    "cookie": "name=value; another=value"
+    "cookie": "sso=...; sso-rw=...; cf_clearance=...; grok_device_id=...; x-userid=..."
   }
 }
 ```
 
-A DevTools Cookies table paste also works. AI Usage converts it into a normal Cookie header.
+AI Usage keeps the Grok auth, Cloudflare, device, and user cookies from a DevTools Cookies table paste. Stripe, Mixpanel, consent, and locale cookies are dropped.
 
 Environment variable setup is also supported:
 
