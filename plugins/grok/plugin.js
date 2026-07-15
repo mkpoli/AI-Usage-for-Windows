@@ -1,5 +1,6 @@
 (function () {
   const USAGE_URL = "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig"
+  const SUBSCRIPTIONS_URL = "https://grok.com/rest/subscriptions"
   const CONFIG_PATHS = ["~/.ai-usage/config.json"]
   const PRODUCT_GROK_BUILD = 2
   const USAGE_PERIOD_MONTHLY = 1
@@ -11,6 +12,15 @@
     "sso": true,
     "sso-rw": true,
     "x-userid": true,
+  }
+  const PLAN_TIERS = {
+    SUBSCRIPTION_TIER_INVALID: { label: "Free", rank: 0 },
+    SUBSCRIPTION_TIER_X_BASIC: { label: "X Basic", rank: 1 },
+    SUBSCRIPTION_TIER_X_PREMIUM: { label: "X Premium", rank: 2 },
+    SUBSCRIPTION_TIER_X_PREMIUM_PLUS: { label: "X Premium+", rank: 3 },
+    SUBSCRIPTION_TIER_SUPER_GROK_LITE: { label: "SuperGrok Lite", rank: 4 },
+    SUBSCRIPTION_TIER_GROK_PRO: { label: "SuperGrok", rank: 5 },
+    SUBSCRIPTION_TIER_SUPER_GROK_PRO: { label: "SuperGrok Heavy", rank: 6 },
   }
 
   function readString(value) {
@@ -130,6 +140,61 @@
       }
     }
     return null
+  }
+
+  function formatUnknownTier(tier) {
+    return String(tier || "")
+      .replace(/^SUBSCRIPTION_TIER_/, "")
+      .toLowerCase()
+      .split("_")
+      .filter(Boolean)
+      .map(function (part) { return part.charAt(0).toUpperCase() + part.slice(1) })
+      .join(" ")
+  }
+
+  function parsePlan(ctx, bodyText) {
+    const data = ctx.util.tryParseJson(bodyText)
+    if (!data || !Array.isArray(data.subscriptions)) return null
+
+    let selected = PLAN_TIERS.SUBSCRIPTION_TIER_INVALID
+    for (let i = 0; i < data.subscriptions.length; i += 1) {
+      const subscription = data.subscriptions[i]
+      if (!subscription || subscription.status !== "SUBSCRIPTION_STATUS_ACTIVE") continue
+      const known = PLAN_TIERS[subscription.tier]
+      if (known && known.rank > selected.rank) selected = known
+      else if (!known) {
+        const label = formatUnknownTier(subscription.tier)
+        if (label) selected = { label: label, rank: Number.MAX_SAFE_INTEGER }
+      }
+    }
+    return selected.label
+  }
+
+  function fetchPlan(ctx, cookieHeader) {
+    let resp
+    try {
+      resp = ctx.util.request({
+        method: "GET",
+        url: SUBSCRIPTIONS_URL,
+        headers: {
+          Accept: "application/json",
+          Referer: "https://grok.com/?_s=billing",
+          Cookie: cookieHeader,
+        },
+        timeoutMs: 15000,
+      })
+    } catch (e) {
+      ctx.host.log.warn("subscription request failed: " + String(e))
+      return null
+    }
+
+    if (resp.status !== 200) {
+      ctx.host.log.warn("subscription request returned HTTP " + resp.status)
+      return null
+    }
+    const plan = parsePlan(ctx, resp.bodyText)
+    if (!plan) ctx.host.log.warn("subscription response could not be parsed")
+    return plan
   }
 
   function bytes() {
@@ -287,7 +352,7 @@
   function parseConfig(message) {
     const reader = makeReader(message)
     const config = {
-      creditUsagePercent: null,
+      creditUsagePercent: 0,
       currentPeriod: null,
       billingPeriodEnd: null,
       productUsage: [],
@@ -392,7 +457,7 @@
         return Math.max(0, row.usagePercent)
       }
     }
-    return null
+    return 0
   }
 
   function addPercentLine(lines, ctx, label, percent, resetsAt) {
@@ -414,6 +479,7 @@
     }
 
     const data = fetchUsage(ctx, cookieHeader)
+    const plan = fetchPlan(ctx, cookieHeader)
     const lines = []
     const reset = data.currentPeriod && data.currentPeriod.end ? data.currentPeriod.end : data.billingPeriodEnd
     addPercentLine(lines, ctx, "Usage pool", data.creditUsagePercent, reset)
@@ -421,7 +487,7 @@
     const period = periodLabel(data.currentPeriod)
     if (period) lines.push(ctx.line.text({ label: "Period", value: period }))
     if (!lines.length) throw "Could not parse usage data."
-    return { lines: lines }
+    return { plan: plan, lines: lines }
   }
 
   globalThis.__ai_usage_plugin = { id: "grok", probe: probe }
