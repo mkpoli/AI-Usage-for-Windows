@@ -91,7 +91,7 @@ describe("settings", () => {
     expect(normalized).toEqual({ order: ["b", "a"], disabled: ["a"] })
   })
 
-  it("keeps default Windows providers enabled and Grok disabled", () => {
+  it("keeps default Windows providers enabled and cookie providers disabled", () => {
     const plugins: PluginMeta[] = [
       { id: "cursor", name: "Cursor", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "antigravity", name: "Antigravity", iconUrl: "", lines: [], primaryCandidates: [] },
@@ -100,10 +100,11 @@ describe("settings", () => {
       { id: "claude", name: "Claude", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "grok", name: "Grok", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "sakana", name: "Sakana AI", iconUrl: "", lines: [], primaryCandidates: [] },
     ]
     const result = normalizePluginSettings({ order: [], disabled: [] }, plugins)
-    expect(result.order).toEqual(["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok"])
-    expect(result.disabled).toEqual(["grok"])
+    expect(result.order).toEqual(["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana"])
+    expect(result.disabled).toEqual(["grok", "sakana"])
   })
 
   it("preserves stored disabled default providers", () => {
@@ -115,11 +116,12 @@ describe("settings", () => {
       { id: "cursor", name: "Cursor", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "grok", name: "Grok", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "sakana", name: "Sakana AI", iconUrl: "", lines: [], primaryCandidates: [] },
     ]
 
     const result = normalizePluginSettings(
       {
-        order: ["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok"],
+        order: ["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana"],
         disabled: ["gemini", "antigravity", "cursor", "copilot"],
       },
       plugins
@@ -128,7 +130,7 @@ describe("settings", () => {
     expect(result.disabled).toEqual(["gemini", "antigravity", "cursor", "copilot"])
   })
 
-  it("keeps newly added default providers enabled and Grok disabled", () => {
+  it("keeps newly added default providers enabled and cookie providers disabled", () => {
     const plugins: PluginMeta[] = [
       { id: "claude", name: "Claude", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "codex", name: "Codex", iconUrl: "", lines: [], primaryCandidates: [] },
@@ -137,6 +139,7 @@ describe("settings", () => {
       { id: "cursor", name: "Cursor", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "grok", name: "Grok", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "sakana", name: "Sakana AI", iconUrl: "", lines: [], primaryCandidates: [] },
     ]
 
     const result = normalizePluginSettings(
@@ -144,8 +147,8 @@ describe("settings", () => {
       plugins
     )
 
-    expect(result.order).toEqual(["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok"])
-    expect(result.disabled).toEqual(["gemini", "grok"])
+    expect(result.order).toEqual(["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana"])
+    expect(result.disabled).toEqual(["gemini", "grok", "sakana"])
   })
 
   it("compares settings equality", () => {

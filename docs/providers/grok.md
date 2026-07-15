@@ -5,6 +5,7 @@ Tracks xAI Grok usage from the Grok web usage pool.
 ## Data source
 
 - **Page:** `https://grok.com/?_s=usage`
+- **Pricing:** `https://x.ai/pricing`
 - **Endpoint:** `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`
 - **Protocol:** gRPC-Web protobuf
 - **Auth:** grok.com browser cookies

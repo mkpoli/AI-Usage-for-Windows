@@ -16,7 +16,7 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-const WHITELISTED_ENV_VARS: [&str; 21] = [
+const WHITELISTED_ENV_VARS: [&str; 23] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -38,6 +38,8 @@ const WHITELISTED_ENV_VARS: [&str; 21] = [
     "GH_TOKEN",
     "GITHUB_TOKEN",
     "GROK_COOKIE",
+    "SAKANA_COOKIE",
+    "SAKANA_SESSION_TOKEN",
 ];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -411,6 +413,11 @@ fn redact_url(url: &str) -> String {
         "profile_arn",
         "email",
         "login",
+        "cookie",
+        "cookies",
+        "session",
+        "session_id",
+        "sessionid",
     ];
 
     if let Some(query_start) = url.find('?') {
@@ -499,6 +506,8 @@ fn redact_body(body: &str) -> String {
         "email",
         "login",
         "analytics_tracking_id",
+        "cookie",
+        "cookies",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
@@ -511,6 +520,16 @@ fn redact_body(body: &str) -> String {
                 })
                 .to_string();
         }
+    }
+
+    if let Ok(cookie_header_re) =
+        regex_lite::Regex::new(r#"(?i)(cookie\s*:\s*)([^\r\n]+)"#)
+    {
+        result = cookie_header_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                format!("{}{}", &caps[1], redact_value(&caps[2]))
+            })
+            .to_string();
     }
 
     if let Ok(path_re) =
@@ -542,6 +561,13 @@ pub(crate) fn redact_log_message(msg: &str) -> String {
     }
     if let Ok(account_re) = regex_lite::Regex::new(r#"(account=)([^,\s]+)"#) {
         result = account_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                format!("{}{}", &caps[1], redact_value(&caps[2]))
+            })
+            .to_string();
+    }
+    if let Ok(cookie_header_re) = regex_lite::Regex::new(r#"(?i)(cookie\s*:\s*)([^\r\n]+)"#) {
+        result = cookie_header_re
             .replace_all(&result, |caps: &regex_lite::Captures| {
                 format!("{}{}", &caps[1], redact_value(&caps[2]))
             })
@@ -2861,6 +2887,8 @@ mod tests {
             "CLAUDE_LOCAL_OAUTH_API_BASE",
         ];
 
+        let sakana_env_vars = ["SAKANA_COOKIE", "SAKANA_SESSION_TOKEN"];
+
         for name in claude_env_vars {
             assert!(
                 WHITELISTED_ENV_VARS.contains(&name),
@@ -2868,6 +2896,12 @@ mod tests {
             );
         }
         assert!(WHITELISTED_ENV_VARS.contains(&"GROK_COOKIE"));
+        for name in sakana_env_vars {
+            assert!(
+                WHITELISTED_ENV_VARS.contains(&name),
+                "{name} must be whitelisted for Sakana auth compatibility"
+            );
+        }
 
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
