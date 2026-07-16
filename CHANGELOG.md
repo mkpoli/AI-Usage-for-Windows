@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.0 - 2026-07-16
+
+### Added
+
+- Sakana AI (Fugu) provider covering 5-hour and weekly usage windows plus plan and subscription details, with the session token read from `~/.ai-usage/config.json`
+- Grok provider covering the xAI plan, the shared usage pool, and Grok Build product usage
+- Grok and Sakana AI are bundled and disabled by default; enable them in Settings
+
+### Fixed
+
+- Claude weekly limits now render each scoped model bucket instead of a single combined weekly line
+
 ## v0.1.2 - 2026-05-20
 
 ### Changed
