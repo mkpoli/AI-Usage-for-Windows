@@ -10,6 +10,7 @@ const SUPPORTED_PLUGIN_IDS: &[&str] = &[
     "cursor",
     "gemini",
     "grok",
+    "kimi",
     "sakana",
 ];
 const DEFAULT_PLUGIN_ORDER: &[&str] = &[
@@ -19,7 +20,9 @@ const DEFAULT_PLUGIN_ORDER: &[&str] = &[
     "antigravity",
     "cursor",
     "copilot",
+    "grok",
     "sakana",
+    "kimi",
 ];
 
 #[derive(Debug, Clone, Deserialize)]
@@ -365,6 +368,7 @@ mod tests {
         assert!(is_supported_plugin_id("cursor"));
         assert!(is_supported_plugin_id("gemini"));
         assert!(is_supported_plugin_id("grok"));
+        assert!(is_supported_plugin_id("kimi"));
         assert!(is_supported_plugin_id("sakana"));
     }
 
@@ -387,6 +391,7 @@ mod tests {
         write_test_plugin(&dir, "claude", "Claude");
         write_test_plugin(&dir, "grok", "Grok");
         write_test_plugin(&dir, "sakana", "Sakana AI");
+        write_test_plugin(&dir, "kimi", "Kimi");
 
         let plugins = load_plugins_from_dir(&dir);
         let ids: Vec<_> = plugins
@@ -396,7 +401,7 @@ mod tests {
 
         assert_eq!(
             ids,
-            vec!["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana"]
+            vec!["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana", "kimi"]
         );
 
         let _ = std::fs::remove_dir_all(&dir);

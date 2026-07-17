@@ -39,6 +39,7 @@ The Windows release currently bundles these providers:
 | [GitHub Copilot](docs/providers/copilot.md) | Available | GitHub CLI authenticated Copilot usage limits |
 | [Grok](docs/providers/grok.md) | Available | xAI plan, shared usage pool, and Grok Build product usage |
 | [Sakana AI](docs/providers/sakana.md) | Available | Sakana AI Fugu 5-hour, weekly, and subscription details |
+| [Kimi](docs/providers/kimi.md) | Available | Kimi Code session and weekly usage, plan from membership level |
 | [Antigravity](docs/providers/antigravity.md) | Available | Windows SQLite and Cloud Code fallback path |
 | [Cursor](docs/providers/cursor.md) | Available | Cursor Desktop SQLite and CLI credential fallback |
 
@@ -54,6 +55,7 @@ Gemini usage reflects Gemini CLI / Code Assist quota buckets. Gemini app compute
 - [GitHub Copilot provider](docs/providers/copilot.md)
 - [Grok provider](docs/providers/grok.md)
 - [Sakana AI provider](docs/providers/sakana.md)
+- [Kimi provider](docs/providers/kimi.md)
 - [Antigravity provider](docs/providers/antigravity.md)
 - [Cursor provider](docs/providers/cursor.md)
 - [Plugin API](docs/plugins/api.md)
@@ -159,6 +161,7 @@ AI Usage는 Windows 시스템 트레이에서만 동작하며 작업표시줄에
 | [GitHub Copilot](docs/providers/copilot.md) | 사용 가능 | GitHub CLI 인증 기반 Copilot 사용량 제한 |
 | [Grok](docs/providers/grok.md) | 사용 가능 | xAI 플랜, 공유 usage pool 및 Grok Build product 사용량 |
 | [Sakana AI](docs/providers/sakana.md) | 사용 가능 | Sakana AI Fugu의 5시간, 주간 및 구독 정보 |
+| [Kimi](docs/providers/kimi.md) | 사용 가능 | Kimi Code의 세션, 주간 사용량 및 membership level 기반 플랜 |
 | [Antigravity](docs/providers/antigravity.md) | 사용 가능 | Windows SQLite 및 Cloud Code fallback 경로 |
 | [Cursor](docs/providers/cursor.md) | 사용 가능 | Cursor Desktop SQLite 및 CLI credential fallback |
 
@@ -174,6 +177,7 @@ Gemini 사용량은 Gemini CLI / Code Assist quota bucket 기준입니다. Gemin
 - [GitHub Copilot provider](docs/providers/copilot.md)
 - [Grok provider](docs/providers/grok.md)
 - [Sakana AI provider](docs/providers/sakana.md)
+- [Kimi provider](docs/providers/kimi.md)
 - [Antigravity provider](docs/providers/antigravity.md)
 - [Cursor provider](docs/providers/cursor.md)
 - [Plugin API](docs/plugins/api.md)

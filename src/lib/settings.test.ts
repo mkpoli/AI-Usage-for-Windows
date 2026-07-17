@@ -101,10 +101,11 @@ describe("settings", () => {
       { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "grok", name: "Grok", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "sakana", name: "Sakana AI", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "kimi", name: "Kimi", iconUrl: "", lines: [], primaryCandidates: [] },
     ]
     const result = normalizePluginSettings({ order: [], disabled: [] }, plugins)
-    expect(result.order).toEqual(["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana"])
-    expect(result.disabled).toEqual(["grok", "sakana"])
+    expect(result.order).toEqual(["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana", "kimi"])
+    expect(result.disabled).toEqual(["grok", "sakana", "kimi"])
   })
 
   it("preserves stored disabled default providers", () => {
@@ -117,11 +118,12 @@ describe("settings", () => {
       { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "grok", name: "Grok", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "sakana", name: "Sakana AI", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "kimi", name: "Kimi", iconUrl: "", lines: [], primaryCandidates: [] },
     ]
 
     const result = normalizePluginSettings(
       {
-        order: ["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana"],
+        order: ["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana", "kimi"],
         disabled: ["gemini", "antigravity", "cursor", "copilot"],
       },
       plugins
@@ -140,6 +142,7 @@ describe("settings", () => {
       { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "grok", name: "Grok", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "sakana", name: "Sakana AI", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "kimi", name: "Kimi", iconUrl: "", lines: [], primaryCandidates: [] },
     ]
 
     const result = normalizePluginSettings(
@@ -147,8 +150,8 @@ describe("settings", () => {
       plugins
     )
 
-    expect(result.order).toEqual(["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana"])
-    expect(result.disabled).toEqual(["gemini", "grok", "sakana"])
+    expect(result.order).toEqual(["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "grok", "sakana", "kimi"])
+    expect(result.disabled).toEqual(["gemini", "grok", "sakana", "kimi"])
   })
 
   it("compares settings equality", () => {
