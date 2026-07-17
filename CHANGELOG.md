@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.2.1 - 2026-07-17
+
+### Added
+
+- Kimi Code provider covering session and weekly usage, with the plan derived from membership level. Bundled and disabled by default; enable it in Settings.
+
+### Changed
+
+- The tray icon now reflects a provider's tightest active limit: when Claude's weekly limit is exhausted, the tray reads full even while the 5-hour window still has room.
+
+### Fixed
+
+- Grok is restored to the default provider order, correcting the order shown on a fresh install.
+
 ## v0.2.0 - 2026-07-16
 
 ### Added
