@@ -65,6 +65,9 @@ pub struct PluginMeta {
     /// Ordered list of primary metric candidates (sorted by primaryOrder).
     /// Frontend picks the first one that exists in runtime data.
     pub primary_candidates: Vec<String>,
+    /// Labels of gating limits: a full gating bucket caps availability, so the
+    /// tray fill reflects the fullest of the primary bar and any gating bar.
+    pub gating_limits: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -389,6 +392,16 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
             let primary_candidates: Vec<String> =
                 candidates.iter().map(|line| line.label.clone()).collect();
 
+            // Gating limits cap availability: a full gating bucket blocks the
+            // provider regardless of the primary bar.
+            let gating_limits: Vec<String> = plugin
+                .manifest
+                .lines
+                .iter()
+                .filter(|line| line.line_type == "progress" && line.gating)
+                .map(|line| line.label.clone())
+                .collect();
+
             PluginMeta {
                 id: plugin.manifest.id,
                 name: plugin.manifest.name,
@@ -414,6 +427,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                     })
                     .collect(),
                 primary_candidates,
+                gating_limits,
             }
         })
         .collect()

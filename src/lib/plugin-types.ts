@@ -45,6 +45,10 @@ export type PluginMeta = {
   links?: PluginLink[]
   /** Ordered list of primary metric candidates. Frontend picks first available. */
   primaryCandidates: string[]
+  /** Labels of gating limits: a full gating bucket caps availability, so the
+   * tray fill reflects the fullest of the primary bar and any gating bar.
+   * Absent or empty for providers that declare no gating limit. */
+  gatingLimits?: string[]
 }
 
 export type PluginDisplayState = {
