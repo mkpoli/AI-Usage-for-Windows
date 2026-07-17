@@ -71,11 +71,22 @@ export function getTrayPrimaryBars(args: {
             isProgressLine(line) && line.label === primaryLabel
         )
         if (primaryLine && primaryLine.limit > 0) {
-          const shownAmount =
-            displayMode === "used"
-              ? primaryLine.used
-              : primaryLine.limit - primaryLine.used
-          fraction = clamp01(shownAmount / primaryLine.limit)
+          // A gating limit caps availability: the provider is as blocked as its
+          // fullest gating bucket, so take the max used-fraction across the
+          // primary bar and any present gating bars. Display mode is applied
+          // afterward, keeping "used" and "remaining" consistent.
+          let usedFraction = primaryLine.used / primaryLine.limit
+          for (const label of meta.gatingLimits ?? []) {
+            const gatingLine = data.lines.find(
+              (line): line is ProgressLine =>
+                isProgressLine(line) && line.label === label
+            )
+            if (gatingLine && gatingLine.limit > 0) {
+              usedFraction = Math.max(usedFraction, gatingLine.used / gatingLine.limit)
+            }
+          }
+          const shownFraction = displayMode === "used" ? usedFraction : 1 - usedFraction
+          fraction = clamp01(shownFraction)
         }
       }
     }

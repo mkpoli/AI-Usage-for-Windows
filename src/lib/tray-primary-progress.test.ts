@@ -302,5 +302,108 @@ describe("getTrayPrimaryBars", () => {
     })
     expect(bars).toEqual([])
   })
+
+  function gatingState(sessionUsed: number, weeklyUsed: number) {
+    return {
+      a: {
+        data: {
+          providerId: "a",
+          displayName: "A",
+          iconUrl: "",
+          lines: [
+            {
+              type: "progress" as const,
+              label: "Session",
+              used: sessionUsed,
+              limit: 100,
+              format: { kind: "percent" as const },
+            },
+            {
+              type: "progress" as const,
+              label: "Weekly",
+              used: weeklyUsed,
+              limit: 100,
+              format: { kind: "percent" as const },
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+      },
+    }
+  }
+
+  const gatingMeta = [
+    {
+      id: "a",
+      name: "A",
+      iconUrl: "",
+      primaryCandidates: ["Session"],
+      gatingLimits: ["Weekly"],
+      lines: [],
+    },
+  ]
+
+  it("caps the primary bar when a gating limit is fuller (used mode)", () => {
+    // Session has room (20% used) but Weekly is exhausted: the bar reads full.
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      pluginsMeta: gatingMeta,
+      pluginSettings: { order: ["a"], disabled: [] },
+      pluginStates: gatingState(20, 100),
+    })
+    expect(bars).toEqual([{ id: "a", fraction: 1 }])
+  })
+
+  it("shows no availability left when a gating limit is exhausted (left mode)", () => {
+    // Same state, remaining mode: a full Weekly means the bar reads empty.
+    const bars = getTrayPrimaryBars({
+      displayMode: "left",
+      pluginsMeta: gatingMeta,
+      pluginSettings: { order: ["a"], disabled: [] },
+      pluginStates: gatingState(20, 100),
+    })
+    expect(bars).toEqual([{ id: "a", fraction: 0 }])
+  })
+
+  it("keeps the primary bar when it is fuller than the gating limit", () => {
+    // Session (80%) dominates a lightly used Weekly (10%).
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      pluginsMeta: gatingMeta,
+      pluginSettings: { order: ["a"], disabled: [] },
+      pluginStates: gatingState(80, 10),
+    })
+    expect(bars).toEqual([{ id: "a", fraction: 0.8 }])
+  })
+
+  it("ignores a gating limit that is absent from runtime data", () => {
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      pluginsMeta: gatingMeta,
+      pluginSettings: { order: ["a"], disabled: [] },
+      pluginStates: {
+        a: {
+          data: {
+            providerId: "a",
+            displayName: "A",
+            iconUrl: "",
+            lines: [
+              {
+                type: "progress",
+                label: "Session",
+                used: 30,
+                limit: 100,
+                format: { kind: "percent" },
+              },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+    expect(bars).toEqual([{ id: "a", fraction: 0.3 }])
+  })
 })
 
