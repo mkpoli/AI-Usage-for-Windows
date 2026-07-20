@@ -68,6 +68,8 @@ pub struct PluginMeta {
     /// Labels of gating limits: a full gating bucket caps availability, so the
     /// tray fill reflects the fullest of the primary bar and any gating bar.
     pub gating_limits: Vec<String>,
+    /// The provider's public pricing page, opened from the plan badge.
+    pub pricing_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -428,6 +430,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                     .collect(),
                 primary_candidates,
                 gating_limits,
+                pricing_url: plugin.manifest.pricing_url,
             }
         })
         .collect()

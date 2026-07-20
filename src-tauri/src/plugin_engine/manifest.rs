@@ -64,6 +64,9 @@ pub struct PluginManifest {
     pub lines: Vec<ManifestLine>,
     #[serde(default)]
     pub links: Vec<PluginLink>,
+    /// Where the plan badge sends the user; the provider's public pricing page.
+    #[serde(default)]
+    pub pricing_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +129,7 @@ fn load_single_plugin(
     let manifest_text = std::fs::read_to_string(&manifest_path)?;
     let mut manifest: PluginManifest = serde_json::from_str(&manifest_text)?;
     manifest.links = sanitize_plugin_links(&manifest.id, std::mem::take(&mut manifest.links));
+    manifest.pricing_url = sanitize_pricing_url(&manifest.id, manifest.pricing_url.take());
 
     // Validate primary_order and gating: only progress lines can carry them
     for line in manifest.lines.iter() {
@@ -176,6 +180,22 @@ fn load_single_plugin(
         entry_script,
         icon_data_url,
     })
+}
+
+fn sanitize_pricing_url(plugin_id: &str, url: Option<String>) -> Option<String> {
+    let url = url?.trim().to_string();
+    if url.is_empty() {
+        return None;
+    }
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        log::warn!(
+            "plugin {} has non-http(s) pricingUrl '{}'; skipping",
+            plugin_id,
+            url
+        );
+        return None;
+    }
+    Some(url)
 }
 
 fn sanitize_plugin_links(plugin_id: &str, links: Vec<PluginLink>) -> Vec<PluginLink> {

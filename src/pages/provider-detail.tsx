@@ -29,6 +29,7 @@ export function ProviderDetailPage({
     <ProviderCard
       name={plugin.meta.name}
       plan={plugin.data?.plan}
+      pricingUrl={plugin.meta.pricingUrl}
       links={plugin.meta.links}
       showSeparator={false}
       loading={plugin.loading}

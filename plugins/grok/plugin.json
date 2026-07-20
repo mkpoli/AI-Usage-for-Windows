@@ -6,15 +6,42 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#050505",
+  "pricingUrl": "https://x.ai/pricing",
   "links": [
-    { "label": "Usage", "url": "https://grok.com/?_s=usage" },
-    { "label": "Billing", "url": "https://grok.com/?_s=billing" },
-    { "label": "Grok Build", "url": "https://grok.com/build" },
-    { "label": "Pricing", "url": "https://x.ai/pricing" }
+    {
+      "label": "Usage",
+      "url": "https://grok.com/?_s=usage"
+    },
+    {
+      "label": "Billing",
+      "url": "https://grok.com/?_s=billing"
+    },
+    {
+      "label": "Grok Build",
+      "url": "https://grok.com/build"
+    },
+    {
+      "label": "Pricing",
+      "url": "https://x.ai/pricing"
+    }
   ],
   "lines": [
-    { "type": "progress", "label": "Usage pool", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Grok Build", "scope": "overview", "primaryOrder": 2 },
-    { "type": "text", "label": "Period", "scope": "detail" }
+    {
+      "type": "progress",
+      "label": "Usage pool",
+      "scope": "overview",
+      "primaryOrder": 1
+    },
+    {
+      "type": "progress",
+      "label": "Grok Build",
+      "scope": "overview",
+      "primaryOrder": 2
+    },
+    {
+      "type": "text",
+      "label": "Period",
+      "scope": "detail"
+    }
   ]
 }

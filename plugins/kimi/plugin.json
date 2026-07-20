@@ -6,8 +6,19 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#000000",
+  "pricingUrl": "https://www.kimi.com/membership/pricing",
   "lines": [
-    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Weekly", "scope": "overview", "primaryOrder": 2 }
+    {
+      "type": "progress",
+      "label": "Session",
+      "scope": "overview",
+      "primaryOrder": 1
+    },
+    {
+      "type": "progress",
+      "label": "Weekly",
+      "scope": "overview",
+      "primaryOrder": 2
+    }
   ]
 }

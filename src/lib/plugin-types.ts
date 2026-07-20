@@ -49,6 +49,8 @@ export type PluginMeta = {
    * tray fill reflects the fullest of the primary bar and any gating bar.
    * Absent or empty for providers that declare no gating limit. */
   gatingLimits?: string[]
+  /** The provider's public pricing page, opened from the plan badge. */
+  pricingUrl?: string
 }
 
 export type PluginDisplayState = {

@@ -1,7 +1,7 @@
 import { Fragment, useMemo } from "react"
 import { ExternalLink, Hourglass, RefreshCw } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { Badge } from "@/components/ui/badge"
+import { Badge, badgeVariants } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
@@ -12,7 +12,7 @@ import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
-import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
+import { clamp01, cn, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
 import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipText } from "@/lib/reset-tooltip"
@@ -20,6 +20,7 @@ import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipT
 interface ProviderCardProps {
   name: string
   plan?: string
+  pricingUrl?: string
   links?: PluginLink[]
   showSeparator?: boolean
   loading?: boolean
@@ -82,6 +83,7 @@ function PaceIndicator({
 export function ProviderCard({
   name,
   plan,
+  pricingUrl,
   links = [],
   showSeparator = true,
   loading = false,
@@ -215,15 +217,26 @@ export function ProviderCard({
               )
             )}
           </div>
-          {plan && (
-            <Badge
-              variant="outline"
-              className="truncate min-w-0 max-w-[40%]"
-              title={plan}
-            >
-              {plan}
-            </Badge>
-          )}
+          {plan &&
+            (pricingUrl ? (
+              <button
+                type="button"
+                className={cn(
+                  badgeVariants({ variant: "outline" }),
+                  "truncate min-w-0 max-w-[40%] cursor-pointer hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                )}
+                title={`${plan} — open pricing`}
+                onClick={() => {
+                  openUrl(pricingUrl).catch(console.error)
+                }}
+              >
+                <span className="truncate">{plan}</span>
+              </button>
+            ) : (
+              <Badge variant="outline" className="truncate min-w-0 max-w-[40%]" title={plan}>
+                {plan}
+              </Badge>
+            ))}
         </div>
         {visibleLinks.length > 0 && (
           <div className="mb-2 -mt-0.5 flex flex-wrap gap-1.5">
