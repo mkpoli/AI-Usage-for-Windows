@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "qwen",
+  "name": "Qwen",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#5B58FF",
+  "pricingUrl": "https://www.qwencloud.com/pricing/token-plan",
+  "links": [
+    {
+      "label": "Billing",
+      "url": "https://home.qwencloud.com/billing"
+    },
+    {
+      "label": "Billing (China)",
+      "url": "https://platform-home.qianwenai.com/billing"
+    },
+    {
+      "label": "Pricing (China)",
+      "url": "https://platform.qianwenai.com/pricing/token-plan"
+    }
+  ],
+  "lines": [
+    {
+      "type": "progress",
+      "label": "5-hour",
+      "scope": "overview",
+      "primaryOrder": 1
+    },
+    {
+      "type": "progress",
+      "label": "Weekly",
+      "scope": "overview",
+      "primaryOrder": 2,
+      "gating": true
+    },
+    {
+      "type": "progress",
+      "label": "Monthly",
+      "scope": "overview",
+      "primaryOrder": 3,
+      "gating": true
+    },
+    {
+      "type": "badge",
+      "label": "Status",
+      "scope": "detail"
+    },
+    {
+      "type": "text",
+      "label": "Allowance",
+      "scope": "detail"
+    },
+    {
+      "type": "text",
+      "label": "Renewal",
+      "scope": "detail"
+    }
+  ]
+}
