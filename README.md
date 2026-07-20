@@ -164,8 +164,8 @@ npm.cmd run tauri -- build
 
 Installers are written to:
 
-- `src-tauri\target\release\bundle\nsis\AI Usage_0.1.2_x64-setup.exe`
-- `src-tauri\target\release\bundle\msi\AI Usage_0.1.2_x64_en-US.msi`
+- `src-tauri\target\release\bundle\nsis\AI Usage_0.3.0_x64-setup.exe`
+- `src-tauri\target\release\bundle\msi\AI Usage_0.3.0_x64_en-US.msi`
 
 ### Credits
 
@@ -341,8 +341,8 @@ npm.cmd run tauri -- build
 
 설치 파일은 다음 경로에 생성됩니다.
 
-- `src-tauri\target\release\bundle\nsis\AI Usage_0.1.2_x64-setup.exe`
-- `src-tauri\target\release\bundle\msi\AI Usage_0.1.2_x64_en-US.msi`
+- `src-tauri\target\release\bundle\nsis\AI Usage_0.3.0_x64-setup.exe`
+- `src-tauri\target\release\bundle\msi\AI Usage_0.3.0_x64_en-US.msi`
 
 ### 크레딧
 

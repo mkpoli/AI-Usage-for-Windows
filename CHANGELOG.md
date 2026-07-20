@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 - 2026-07-20
 
 ### Added
 
@@ -14,6 +14,10 @@
 - Kimi reports Moonshot's marketed tier name where it is known, showing `Allegretto` for `LEVEL_INTERMEDIATE`.
 - The plan badge opens the provider's pricing page when one is known.
 - The tray icon draws a bar for every enabled provider instead of stopping at four, and the tooltip lists as many providers as Windows will hold.
+
+### Fixed
+
+- The update check now points at this repository, so new installs can find releases.
 
 ## v0.2.1 - 2026-07-17
 
