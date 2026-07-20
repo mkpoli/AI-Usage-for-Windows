@@ -1,7 +1,10 @@
 (function () {
-  const BILLING_URL = "https://console.sakana.ai/billing"
+  // The overview tab renders the quota percentages without their reset
+  // timestamps; only the subscription tab carries "Resets on ...".
+  const BILLING_URL = "https://console.sakana.ai/billing?tab=subscription"
   const FIVE_HOUR_MS = 5 * 60 * 60 * 1000
-  const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+  const DAY_MS = 24 * 60 * 60 * 1000
+  const WEEK_MS = 7 * DAY_MS
   const DEFAULT_SESSION_COOKIE_NAME = "__Secure-authjs.session-token"
   const CONFIG_PATHS = ["~/.ai-usage/config.json"]
   // Only the Auth.js session token authenticates the billing GET. The csrf-token
@@ -298,7 +301,7 @@
     const raw = readString(text)
     if (!raw) return null
 
-    const match = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})\s+at\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+    const match = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})(?:\s+at\s+(\d{1,2}):(\d{2})\s*(AM|PM))?$/i)
     if (!match) return null
 
     const months = {
@@ -318,12 +321,16 @@
     const month = months[match[1].toLowerCase()]
     if (month === undefined) return null
 
-    let hour = Number(match[4])
-    const minute = Number(match[5])
-    const ampm = match[6].toUpperCase()
-    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
-    if (ampm === "AM" && hour === 12) hour = 0
-    if (ampm === "PM" && hour !== 12) hour += 12
+    let hour = 0
+    let minute = 0
+    if (match[4] !== undefined) {
+      hour = Number(match[4])
+      minute = Number(match[5])
+      const ampm = match[6].toUpperCase()
+      if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
+      if (ampm === "AM" && hour === 12) hour = 0
+      if (ampm === "PM" && hour !== 12) hour += 12
+    }
 
     const ms = Date.UTC(Number(match[3]), month, Number(match[2]), hour, minute, 0, 0)
     return Number.isFinite(ms) ? new Date(ms).toISOString() : null
@@ -358,10 +365,26 @@
     )
   }
 
+  // The overview tab labels the date "Renews on <date>"; the subscription tab
+  // writes "Next renewal: <date>" and drops the surrounding heading.
+  function parseRenewalText(section) {
+    const onForm = capture("<p[^>]*>\\s*((?:Renews|Ends) on:? [^<]+?)\\s*<\\/p>", section, "i")
+    if (onForm) {
+      const match = onForm.match(/^(Renews|Ends) on:?\s*(.+)$/i)
+      if (match) return { verb: match[1].toLowerCase(), date: match[2], text: onForm }
+    }
+
+    const nextForm = capture("<p[^>]*>\\s*Next renewal:\\s*([^<]+?)\\s*<\\/p>", section, "i")
+    if (nextForm) return { verb: "renews", date: nextForm, text: "Renews on " + nextForm }
+
+    return null
+  }
+
   function parseSubscription(html) {
     const heading = firstMatch("<h2[^>]*>\\s*Subscription\\s*<\\/h2>", html, "i")
-    if (!heading) return null
-    const section = html.slice(heading.index, heading.index + 6000)
+    // The subscription tab has no Subscription heading, so fall back to the
+    // whole document rather than losing the plan and renewal entirely.
+    const section = heading ? html.slice(heading.index, heading.index + 6000) : html
     const status = capture("<span[^>]*>\\s*(Active|Trial|Ending|Needs attention|Not subscribed)\\s*<\\/span>", section, "i")
     const plan = capture("<p[^>]*class=\\\"[^\\\"]*text-3xl[^\\\"]*\\\"[^>]*>\\s*([^<]+?)\\s*<\\/p>", section, "i")
     let price = null
@@ -369,7 +392,7 @@
       const planPattern = "<p[^>]*class=\\\"[^\\\"]*text-3xl[^\\\"]*\\\"[^>]*>\\s*" + escapeRegex(plan) + "\\s*<\\/p>\\s*<p[^>]*>\\s*([^<]+?)\\s*<\\/p>"
       price = capture(planPattern, section, "i")
     }
-    const renewal = capture("<p[^>]*>\\s*((?:Renews|Ends) on [^<]+?)\\s*<\\/p>", section, "i")
+    const renewal = parseRenewalText(section)
     const parts = []
     if (status) parts.push(stripTags(status))
     if (plan) parts.push(stripTags(plan))
@@ -379,7 +402,9 @@
           summary: parts.join(" · "),
           plan: plan ? stripTags(plan) : null,
           price: price ? stripTags(price) : null,
-          renewal: renewal ? stripTags(renewal) : null,
+          renewal: renewal ? stripTags(renewal.text) : null,
+          renewalVerb: renewal ? renewal.verb : null,
+          renewalAt: renewal ? parseResetDate(stripTags(renewal.date)) : null,
         }
       : null
   }
@@ -421,6 +446,25 @@
     lines.push(ctx.line.progress(opts))
   }
 
+  // "Renews on July 22, 2026" carries no countdown, so the remaining days are
+  // derived here to match how the quota windows show time left.
+  function formatRenewal(subscription, nowMs) {
+    if (!subscription || !subscription.renewal) return null
+    if (!subscription.renewalAt) return subscription.renewal
+
+    const targetMs = Date.parse(subscription.renewalAt)
+    if (!Number.isFinite(targetMs)) return subscription.renewal
+
+    const days = Math.ceil((targetMs - nowMs) / DAY_MS)
+    const verb = subscription.renewalVerb === "ends" ? "Ends" : "Renews"
+    let countdown
+    if (days <= 0) countdown = verb.toLowerCase() === "ends" ? "Ends today" : "Renews today"
+    else if (days === 1) countdown = verb + " tomorrow"
+    else countdown = verb + " in " + days + " days"
+
+    return countdown + " · " + subscription.renewal.replace(/^(?:Renews|Ends) on /i, "")
+  }
+
   function probe(ctx) {
     const cookieHeader = loadCookieHeader(ctx)
     if (!cookieHeader) {
@@ -442,8 +486,9 @@
     if (parsed.subscription && parsed.subscription.summary) {
       lines.push(ctx.line.text({ label: "Subscription", value: parsed.subscription.summary }))
     }
-    if (parsed.subscription && parsed.subscription.renewal) {
-      lines.push(ctx.line.text({ label: "Renewal", value: parsed.subscription.renewal }))
+    const renewalText = formatRenewal(parsed.subscription, Date.now())
+    if (renewalText) {
+      lines.push(ctx.line.text({ label: "Renewal", value: renewalText }))
     }
 
     return { plan: parsed.plan, lines }

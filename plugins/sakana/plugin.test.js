@@ -66,7 +66,7 @@ describe("sakana plugin", () => {
     expect(result.plan).toBe("Standard $20/mo")
     expect(ctx.host.http.request).toHaveBeenCalledWith(expect.objectContaining({
       method: "GET",
-      url: "https://console.sakana.ai/billing",
+      url: "https://console.sakana.ai/billing?tab=subscription",
       headers: expect.objectContaining({
         Cookie: "session=abc; theme=dark",
         Accept: "text/html,application/xhtml+xml",
@@ -108,9 +108,12 @@ describe("sakana plugin", () => {
     const ctx = makeCtx()
     mockCookie(ctx)
     mockBilling(ctx, SUBSCRIPTION_HTML)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-10T00:00:00.000Z"))
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
+    vi.useRealTimers()
 
     expect(result.plan).toBe("Max $200/mo")
     expect(result.lines.find((line) => line.label === "Subscription")).toEqual({
@@ -121,8 +124,68 @@ describe("sakana plugin", () => {
     expect(result.lines.find((line) => line.label === "Renewal")).toEqual({
       type: "text",
       label: "Renewal",
-      value: "Renews on July 22, 2026",
+      value: "Renews in 12 days · July 22, 2026",
     })
+  })
+
+  it("renders renewal countdown edge cases", async () => {
+    const cases = [
+      ["2026-07-21T00:00:00.000Z", "Renews tomorrow · July 22, 2026"],
+      ["2026-07-22T00:00:00.000Z", "Renews today · July 22, 2026"],
+      ["2026-07-23T00:00:00.000Z", "Renews today · July 22, 2026"],
+    ]
+
+    for (const [now, expected] of cases) {
+      delete globalThis.__ai_usage_plugin
+      vi.resetModules()
+      const ctx = makeCtx()
+      mockCookie(ctx)
+      mockBilling(ctx, SUBSCRIPTION_HTML)
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(now))
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      vi.useRealTimers()
+
+      expect(result.lines.find((line) => line.label === "Renewal").value).toBe(expected)
+    }
+  })
+
+  it("counts down a plan that is ending", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockBilling(ctx, SUBSCRIPTION_HTML.replace("Renews on", "Ends on"))
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-15T00:00:00.000Z"))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    vi.useRealTimers()
+
+    expect(result.lines.find((line) => line.label === "Renewal").value).toBe(
+      "Ends in 7 days · July 22, 2026",
+    )
+  })
+
+  it("reads the subscription tab wording without a Subscription heading", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockBilling(ctx, BILLING_HTML.replace(
+      "</main>",
+      '<div data-slot="card-title"><span>Max</span><span>$200/mo</span></div>' +
+        "<p>Next renewal: July 22, 2026</p></main>",
+    ))
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-07-15T00:00:00.000Z"))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    vi.useRealTimers()
+
+    expect(result.lines.find((line) => line.label === "Renewal").value).toBe(
+      "Renews in 7 days · July 22, 2026",
+    )
   })
 
   it("handles a missing reset line", async () => {
