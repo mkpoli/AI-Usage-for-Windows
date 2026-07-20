@@ -513,6 +513,8 @@ fn redact_body(body: &str) -> String {
         "analytics_tracking_id",
         "cookie",
         "cookies",
+        "sec_token",
+        "secToken",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
@@ -3180,6 +3182,24 @@ mod tests {
         let body = r#"{"key": "sk-1234567890abcdefghij"}"#;
         let redacted = redact_body(body);
         assert!(redacted.contains("sk-1...ghij"));
+    }
+
+    #[test]
+    fn redact_body_redacts_console_sec_token() {
+        // The Qwen console returns the CSRF token in a JSON body that capture
+        // logs record. The generic "token" key does not cover it, because the
+        // pattern needs a quote directly before the key name.
+        for body in [
+            r#"{"sec_token": "abcdef0123456789"}"#,
+            r#"{"secToken": "abcdef0123456789"}"#,
+        ] {
+            let redacted = redact_body(body);
+            assert!(
+                !redacted.contains("abcdef0123456789"),
+                "sec_token should be redacted, got: {}",
+                redacted
+            );
+        }
     }
 
     #[test]
