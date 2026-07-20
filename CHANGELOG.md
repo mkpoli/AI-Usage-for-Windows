@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Qwen provider covering the Alibaba Qwen Token Plan's five-hour and weekly windows and the Coding Plan's five-hour, weekly, and monthly request quotas, plus the plan name and a renewal countdown. Works with both the international (`qwencloud.com`) and China (`qianwenai.com`) consoles, with console cookies read from `~/.ai-usage/config.json`. Bundled and disabled by default; enable it in Settings.
+- A provider comparison in the README covering the metrics each provider reports, how each stores credentials, and what each cannot show.
+
+### Changed
+
+- Sakana AI's renewal line now counts down the days remaining instead of showing only the renewal date.
+- Sakana AI now reads the subscription billing tab, which is the only one carrying the quota reset timestamps, so the 5-hour and weekly windows show when they reset.
+- Kimi reports Moonshot's marketed tier name where it is known, showing `Allegretto` for `LEVEL_INTERMEDIATE`.
+- The plan badge opens the provider's pricing page when one is known.
+- The tray icon draws a bar for every enabled provider instead of stopping at four, and the tooltip lists as many providers as Windows will hold.
+
 ## v0.2.1 - 2026-07-17
 
 ### Added
