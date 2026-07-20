@@ -53,6 +53,10 @@ Returns overall usage and at least one windowed quota.
 }
 ```
 
+### Plan names
+
+Moonshot markets the tiers as Adagio, Moderato, Allegretto, Allegro, and Vivace, while the API reports an internal level code. `LEVEL_INTERMEDIATE` is shown as `Allegretto`, matching the Kimi Code console. Any other level is shown as the code itself, title-cased, so an unrecognised tier is reported plainly rather than mislabelled.
+
 ### POST https://auth.kimi.com/api/oauth/token
 
 Refreshes `access_token` using `refresh_token`.

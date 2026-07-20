@@ -19,6 +19,15 @@
       })
   }
 
+  // Moonshot markets the tiers under musical names (Adagio, Moderato,
+  // Allegretto, Allegro, Vivace) while the API reports an internal level code.
+  // Only the entry below has been confirmed against the Kimi Code console; any
+  // other level falls back to the code itself, so an unrecognised tier is
+  // reported plainly rather than mislabelled.
+  const PLAN_NAMES_BY_LEVEL = {
+    LEVEL_INTERMEDIATE: "Allegretto",
+  }
+
   function parsePlanLabel(data) {
     const level =
       data &&
@@ -28,6 +37,9 @@
         ? data.user.membership.level
         : null
     if (!level) return null
+
+    const marketed = PLAN_NAMES_BY_LEVEL[level.toUpperCase()]
+    if (marketed) return marketed
 
     const cleaned = level.replace(/^LEVEL_/, "").replace(/_/g, " ")
     const label = titleCaseWords(cleaned)
