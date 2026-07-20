@@ -43,7 +43,7 @@ describe("tray-tooltip", () => {
         { id: "p2", fraction: 0.12 },
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta)
-      expect(tooltip).toBe("AI Usage\nPlugin 1: 45%\nPlugin 2: 12%")
+      expect(tooltip).toBe("Plugin 1 45%\nPlugin 2 12%")
     })
 
     it("should handle missing plugin metadata gracefully", () => {
@@ -52,7 +52,7 @@ describe("tray-tooltip", () => {
         { id: "unknown", fraction: 0.5 },
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta)
-      expect(tooltip).toBe("AI Usage\nPlugin 1: 45%")
+      expect(tooltip).toBe("Plugin 1 45%")
     })
 
     it("should show --% for missing fractions", () => {
@@ -60,7 +60,37 @@ describe("tray-tooltip", () => {
         { id: "p1", fraction: undefined },
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta)
-      expect(tooltip).toBe("AI Usage\nPlugin 1: --%")
+      expect(tooltip).toBe("Plugin 1 --%")
+    })
+
+    it("lists every provider when they fit", () => {
+      const meta = Array.from({ length: 8 }, (_, i) => ({
+        id: `p${i}`,
+        name: `P${i}`,
+        iconUrl: "",
+        lines: [],
+        primaryCandidates: [],
+      }))
+      const bars: TrayPrimaryBar[] = meta.map((m) => ({ id: m.id, fraction: 0.5 }))
+
+      const tooltip = formatTrayTooltip(bars, meta)
+      expect(tooltip.split("\n")).toHaveLength(8)
+      expect(tooltip).toContain("P7 50%")
+    })
+
+    it("stops before overflowing the Windows tooltip buffer", () => {
+      const meta = Array.from({ length: 40 }, (_, i) => ({
+        id: `p${i}`,
+        name: `Provider${i}`,
+        iconUrl: "",
+        lines: [],
+        primaryCandidates: [],
+      }))
+      const bars: TrayPrimaryBar[] = meta.map((m) => ({ id: m.id, fraction: 0.5 }))
+
+      const tooltip = formatTrayTooltip(bars, meta)
+      expect(tooltip.length).toBeLessThanOrEqual(127)
+      expect(tooltip.split("\n").length).toBeLessThan(40)
     })
   })
 })

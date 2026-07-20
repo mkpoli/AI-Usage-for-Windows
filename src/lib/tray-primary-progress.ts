@@ -35,7 +35,7 @@ export function getTrayPrimaryBars(args: {
     pluginsMeta,
     pluginSettings,
     pluginStates,
-    maxBars = 4,
+    maxBars = Number.POSITIVE_INFINITY,
     displayMode = DEFAULT_DISPLAY_MODE,
     pluginId,
   } = args

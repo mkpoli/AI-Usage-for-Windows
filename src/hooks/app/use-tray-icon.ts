@@ -209,7 +209,6 @@ export function useTrayIcon({
         pluginsMeta: pluginsMetaRef.current,
         pluginSettings: currentSettings,
         pluginStates: pluginStatesRef.current,
-        maxBars: 4,
         displayMode: displayModeRef.current,
       })
 
@@ -243,7 +242,6 @@ export function useTrayIcon({
         pluginsMeta: pluginsMetaRef.current,
         pluginSettings: currentSettings,
         pluginStates: pluginStatesRef.current,
-        maxBars: 20, // Show more in tooltip
         displayMode: displayModeRef.current,
       })
       const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current)

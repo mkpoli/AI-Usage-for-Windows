@@ -192,7 +192,9 @@ export function makeTrayBarsSvg(args: {
   const barsForStyle = style === "bars" ? bars : bars.slice(0, 1)
   // Intentionally render a single empty track when bars mode has no data yet
   // so the tray icon keeps a stable shape during loading/initialization.
-  const n = Math.max(1, Math.min(4, barsForStyle.length || 1))
+  // Every enabled provider gets a bar; the stack divides the available height,
+  // so bars thin out rather than being dropped.
+  const n = Math.max(1, barsForStyle.length || 1)
   const text = normalizePercentText(percentText)
   const layout = getSvgLayout({
     sizePx,
