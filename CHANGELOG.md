@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The in-app update check can now find and install releases: builds ship signed updater artifacts, each release publishes the `latest.json` the check reads, and the app verifies against this project's own signing key. Versions up to v0.4.0 need one manual install of this release; the app updates itself from then on.
+
 ## v0.4.0 - 2026-07-23
 
 ### Changed

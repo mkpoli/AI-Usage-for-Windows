@@ -97,7 +97,7 @@ jobs:
           releaseName: ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: false
+          includeUpdaterJson: true
           args: ${{ matrix.args }}
 
       - name: Verify Windows installer artifacts
