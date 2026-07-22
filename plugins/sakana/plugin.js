@@ -215,10 +215,76 @@
     return loadFromConfigFile(ctx)
   }
 
-  function fetchBilling(ctx, cookieHeader) {
-    let resp
+  // The console re-issues the session token on every authenticated response,
+  // pushing its expiry forward; a copied token dies at its fixed expiry unless
+  // the re-issued one replaces it. Each successful probe stores the rotated
+  // token in the plugin data dir, keyed to a fingerprint of the credential the
+  // user configured so that pasting a new token discards the stored session.
+  function authStorePath(ctx) {
+    return ctx.app.pluginDataDir + "/auth.json"
+  }
+
+  function fingerprint(text) {
+    let hash = 0x811c9dc5
+    for (let i = 0; i < text.length; i += 1) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193)
+    }
+    return (hash >>> 0).toString(16)
+  }
+
+  function loadStoredSession(ctx, sourceHash) {
+    const path = authStorePath(ctx)
     try {
-      resp = ctx.util.request({
+      if (!ctx.host.fs.exists(path)) return null
+      const data = ctx.util.tryParseJson(ctx.host.fs.readText(path))
+      if (!data || typeof data !== "object") return null
+      if (data.sourceHash !== sourceHash) return null
+      const token = readString(data.sessionToken)
+      if (!token || !looksLikeBareToken(token)) return null
+      return token
+    } catch (e) {
+      ctx.host.log.warn("session store read failed: " + String(e))
+      return null
+    }
+  }
+
+  function saveStoredSession(ctx, token, sourceHash) {
+    try {
+      ctx.host.fs.writeText(
+        authStorePath(ctx),
+        JSON.stringify({ sessionToken: token, sourceHash: sourceHash, updatedAt: ctx.nowIso }),
+      )
+      ctx.host.log.info("rotated session token persisted")
+    } catch (e) {
+      ctx.host.log.warn("session store write failed: " + String(e))
+    }
+  }
+
+  // The host joins repeated set-cookie headers with newlines. A cleared cookie
+  // (`...session-token=; Max-Age=0`) has an empty value and is skipped.
+  function rotatedSessionToken(resp) {
+    const headers = resp && resp.headers && typeof resp.headers === "object" ? resp.headers : {}
+    const keys = Object.keys(headers)
+    for (let i = 0; i < keys.length; i += 1) {
+      if (keys[i].toLowerCase() !== "set-cookie") continue
+      const lines = String(headers[keys[i]]).split(/[\r\n]+/)
+      for (let j = 0; j < lines.length; j += 1) {
+        const match = lines[j].match(/^\s*__Secure-authjs\.session-token=([^;]*)/i)
+        if (!match) continue
+        const token = readString(match[1])
+        if (token && looksLikeBareToken(token)) return token
+      }
+    }
+    return null
+  }
+
+  function isLoginStatus(ctx, status) {
+    return ctx.util.isAuthStatus(status) || (status >= 300 && status < 400)
+  }
+
+  function requestBilling(ctx, cookieHeader) {
+    try {
+      return ctx.util.request({
         method: "GET",
         url: BILLING_URL,
         headers: {
@@ -232,8 +298,21 @@
       ctx.host.log.error("billing request exception: " + String(e))
       throw "Request failed. Check your connection."
     }
+  }
 
-    if (ctx.util.isAuthStatus(resp.status) || (resp.status >= 300 && resp.status < 400)) {
+  function fetchBilling(ctx, userHeader, sourceHash) {
+    const storedToken = loadStoredSession(ctx, sourceHash)
+
+    let resp = requestBilling(
+      ctx,
+      storedToken ? DEFAULT_SESSION_COOKIE_NAME + "=" + storedToken : userHeader,
+    )
+    if (storedToken && isLoginStatus(ctx, resp.status)) {
+      ctx.host.log.info("stored session rejected; retrying with the configured credential")
+      resp = requestBilling(ctx, userHeader)
+    }
+
+    if (isLoginStatus(ctx, resp.status)) {
       throw "Sakana login required. Copy a fresh `__Secure-authjs.session-token` from console.sakana.ai into `~/.ai-usage/config.json`."
     }
     if (resp.status !== 200) {
@@ -241,6 +320,11 @@
     }
     if (!readString(resp.bodyText)) {
       throw "Could not parse usage data."
+    }
+
+    const rotated = rotatedSessionToken(resp)
+    if (rotated && rotated !== storedToken) {
+      saveStoredSession(ctx, rotated, sourceHash)
     }
 
     return resp.bodyText
@@ -473,7 +557,7 @@
 
     let parsed
     try {
-      parsed = parseBillingHTML(fetchBilling(ctx, cookieHeader))
+      parsed = parseBillingHTML(fetchBilling(ctx, cookieHeader, fingerprint(cookieHeader)))
     } catch (e) {
       if (typeof e === "string") throw e
       ctx.host.log.error("billing parse failed: " + String(e))

@@ -39,8 +39,18 @@ function mockCookie(ctx, value = "session=abc; theme=dark") {
   ctx.host.env.get.mockImplementation((name) => (name === "SAKANA_COOKIE" ? value : null))
 }
 
-function mockBilling(ctx, body = BILLING_HTML, status = 200) {
-  ctx.host.http.request.mockReturnValue({ status, headers: {}, bodyText: body })
+function mockBilling(ctx, body = BILLING_HTML, status = 200, headers = {}) {
+  ctx.host.http.request.mockReturnValue({ status, headers, bodyText: body })
+}
+
+const AUTH_STORE = "/tmp/ai-usage-test/plugin/auth.json"
+const ROTATED = "eyJROTATED.SESSION.TOKENVALUE123456"
+const ROTATION_HEADERS = {
+  "set-cookie": [
+    "__Host-authjs.csrf-token=abc; Path=/; HttpOnly",
+    "__Secure-authjs.callback-url=x; Path=/; HttpOnly",
+    `__Secure-authjs.session-token=${ROTATED}; Path=/; Expires=Wed, 29 Jul 2026 17:56:21 GMT; HttpOnly; Secure; SameSite=Lax`,
+  ].join("\n"),
 }
 
 describe("sakana plugin", () => {
@@ -426,6 +436,85 @@ describe("sakana plugin", () => {
         Cookie: "__Secure-authjs.session-token.0=part0value000000; __Secure-authjs.session-token.1=part1value111111",
       }),
     }))
+  })
+
+  it("persists the rotated session token from set-cookie", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockBilling(ctx, BILLING_HTML, 200, ROTATION_HEADERS)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const stored = JSON.parse(ctx.host.fs.readText(AUTH_STORE))
+    expect(stored.sessionToken).toBe(ROTATED)
+    expect(stored.sourceHash).toMatch(/^[0-9a-f]{1,8}$/)
+  })
+
+  it("uses the persisted session token on the next probe", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockBilling(ctx, BILLING_HTML, 200, ROTATION_HEADERS)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenLastCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: `__Secure-authjs.session-token=${ROTATED}`,
+      }),
+    }))
+  })
+
+  it("ignores the stored session when the configured credential changes", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockBilling(ctx, BILLING_HTML, 200, ROTATION_HEADERS)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    mockCookie(ctx, "__Secure-authjs.session-token=FRESHLYPASTEDTOKEN123456")
+    plugin.probe(ctx)
+
+    expect(ctx.host.http.request).toHaveBeenLastCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({
+        Cookie: "__Secure-authjs.session-token=FRESHLYPASTEDTOKEN123456",
+      }),
+    }))
+  })
+
+  it("falls back to the configured credential when the stored session is rejected", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx, "__Secure-authjs.session-token=CONFIGUREDTOKEN123456")
+    mockBilling(ctx, BILLING_HTML, 200, ROTATION_HEADERS)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    ctx.host.http.request
+      .mockReturnValueOnce({ status: 307, headers: {}, bodyText: "" })
+      .mockReturnValueOnce({ status: 200, headers: {}, bodyText: BILLING_HTML })
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Standard $20/mo")
+    const calls = ctx.host.http.request.mock.calls
+    expect(calls[calls.length - 2][0].headers.Cookie).toBe(`__Secure-authjs.session-token=${ROTATED}`)
+    expect(calls[calls.length - 1][0].headers.Cookie).toBe("__Secure-authjs.session-token=CONFIGUREDTOKEN123456")
+  })
+
+  it("ignores a cleared session-token set-cookie", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockBilling(ctx, BILLING_HTML, 200, {
+      "set-cookie": "__Secure-authjs.session-token=; Max-Age=0; Path=/; HttpOnly; Secure",
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.fs.exists(AUTH_STORE)).toBe(false)
   })
 
   it("rejects out-of-range percentages", async () => {

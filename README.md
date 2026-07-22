@@ -78,7 +78,7 @@ Qwen covers two subscriptions: a Token Plan reporting five-hour and weekly windo
 | Gemini | `~/.gemini/oauth_creds.json` | ● | ● |
 | GitHub Copilot | Copilot CLI or GitHub CLI credentials, or a `GH_TOKEN` style variable | ○ rotates between sources | ● |
 | Grok | browser session cookie in `~/.ai-usage/config.json` | ○ | ○ |
-| Sakana AI | browser session cookie in `~/.ai-usage/config.json` | ○ | ○ |
+| Sakana AI | browser session cookie in `~/.ai-usage/config.json`, then self-renewing | ● | ○ |
 | Kimi | `~/.kimi-code/credentials/kimi-code.json` | ● | ○ |
 | Qwen | console session cookies in `~/.ai-usage/config.json` | ○ | ○ |
 | Antigravity | Antigravity desktop SQLite state, Cloud Code fallback | ● | ● |
@@ -255,7 +255,7 @@ Qwen은 두 가지 구독을 지원합니다. Token Plan은 5시간·주간 창�
 | Gemini | `~/.gemini/oauth_creds.json` | ● | ● |
 | GitHub Copilot | Copilot CLI 또는 GitHub CLI credential, `GH_TOKEN` 계열 변수 | ○ 소스 간 전환 | ● |
 | Grok | `~/.ai-usage/config.json`에 넣은 브라우저 세션 쿠키 | ○ | ○ |
-| Sakana AI | `~/.ai-usage/config.json`에 넣은 브라우저 세션 쿠키 | ○ | ○ |
+| Sakana AI | `~/.ai-usage/config.json`에 넣은 브라우저 세션 쿠키, 이후 자동 연장 | ● | ○ |
 | Kimi | `~/.kimi-code/credentials/kimi-code.json` | ● | ○ |
 | Qwen | `~/.ai-usage/config.json`에 넣은 콘솔 세션 쿠키 | ○ | ○ |
 | Antigravity | Antigravity 데스크톱 SQLite state, Cloud Code fallback | ● | ● |

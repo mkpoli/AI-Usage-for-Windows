@@ -58,6 +58,12 @@ AI Usage reads these variables from the process environment or the persisted Win
 2. `SAKANA_COOKIE` (environment)
 3. `~/.ai-usage/config.json` → `sakana.sessionToken` / `sakana.token` / `sakana.cookie`
 
+## Session auto-refresh
+
+The console re-issues the session token on every authenticated request and pushes its expiry forward (a rolling window of about six days). AI Usage stores each re-issued token in `plugins_data/sakana/auth.json` under the app data directory and uses the newest one for the next refresh, so the token you paste only has to be valid once; with Auto Refresh enabled the session then stays alive indefinitely.
+
+The stored session is tied to the credential you configured. Pasting a new token (or changing the environment variable) discards the stored session and starts a new chain. If the stored session is ever rejected, AI Usage retries with the configured credential before reporting a login error.
+
 ## Data source
 
 - **URL:** `https://console.sakana.ai/billing`
@@ -83,6 +89,6 @@ The Sakana public API supports Fugu chat and model requests. AI Usage reads quot
 | Error | Meaning |
 |-------|---------|
 | `Missing Sakana credentials` | No token was found in the environment or `~/.ai-usage/config.json`. |
-| `Sakana login required` | The session token expired or the request was redirected. Copy a fresh token. |
+| `Sakana login required` | Both the stored session and the configured token were rejected. Copy a fresh token. |
 | `Sakana billing fetch failed` | The billing page returned a non-200 response. |
 | `Could not parse usage data` | The billing page markup is missing supported quota rows. |

@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Sakana AI keeps the session alive by storing the rotated session token the console returns on each refresh, so a pasted token keeps working past its original expiry. If the stored session is rejected, the configured token is tried again; pasting a new token into `~/.ai-usage/config.json` replaces the stored session.
 - Plugins now see every value of repeated HTTP response headers, newline-joined; previously only the last `Set-Cookie` header survived.
 
 ## v0.3.0 - 2026-07-20
