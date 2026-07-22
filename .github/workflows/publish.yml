@@ -94,7 +94,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ env.RELEASE_TAG }}
-          releaseName: ${{ env.RELEASE_TAG }}
+          releaseName: AI Usage ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
