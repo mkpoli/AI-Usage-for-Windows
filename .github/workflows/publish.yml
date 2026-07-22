@@ -39,9 +39,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
       - name: Bundle plugins
-        run: npm run bundle:plugins
+        run: bun run bundle:plugins
       - name: Verify bundled plugins
         shell: pwsh
         run: |
