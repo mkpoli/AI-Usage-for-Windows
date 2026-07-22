@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Plugins now see every value of repeated HTTP response headers, newline-joined; previously only the last `Set-Cookie` header survived.
+
 ## v0.3.0 - 2026-07-20
 
 ### Added

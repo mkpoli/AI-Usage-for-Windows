@@ -958,7 +958,7 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
 
                 let status = response.status().as_u16();
-                let mut resp_headers = std::collections::HashMap::new();
+                let mut resp_headers = std::collections::HashMap::<String, String>::new();
                 for (key, value) in response.headers().iter() {
                     let header_value = value.to_str().map_err(|e| {
                         Exception::throw_message(
@@ -966,7 +966,15 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                             &format!("invalid response header '{}': {}", key, e),
                         )
                     })?;
-                    resp_headers.insert(key.to_string(), header_value.to_string());
+                    // Repeated headers (set-cookie) are newline-joined; a comma
+                    // join would corrupt cookie Expires attributes.
+                    resp_headers
+                        .entry(key.to_string())
+                        .and_modify(|existing| {
+                            existing.push('\n');
+                            existing.push_str(header_value);
+                        })
+                        .or_insert_with(|| header_value.to_string());
                 }
                 let body_bytes = response
                     .bytes()
