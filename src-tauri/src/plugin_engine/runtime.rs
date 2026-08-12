@@ -486,6 +486,7 @@ mod tests {
                 entry: "plugin.js".to_string(),
                 icon: "icon.svg".to_string(),
                 brand_color: None,
+                pricing_url: None,
                 lines: vec![],
                 links: vec![],
             },
