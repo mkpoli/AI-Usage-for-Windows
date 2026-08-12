@@ -105,6 +105,41 @@ describe("claude plugin", () => {
     expect(ctx.host.log.warn).toHaveBeenCalled()
   })
 
+  it("reports an expired session when the credentials file was cleared", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "",
+          refreshToken: "",
+          expiresAt: 0,
+          refreshTokenExpiresAt: 1788712760482,
+          subscriptionType: "max",
+        },
+      })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Claude subscription session expired")
+  })
+
+  it("reports an expired session when the keychain record was cleared", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.keychain.readGenericPassword.mockReturnValue(
+      JSON.stringify({ claudeAiOauth: { accessToken: "", refreshToken: "", expiresAt: 0 } })
+    )
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Claude subscription session expired")
+  })
+
+  it("keeps the not-logged-in message when no credentials exist at all", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => JSON.stringify({})
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
   it("treats keychain read errors as missing credentials", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => false
@@ -1189,7 +1224,7 @@ describe("claude plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Session expired")
+    expect(() => plugin.probe(ctx)).toThrow("Claude subscription session expired")
   })
 
   it("throws token expired when usage remains unauthorized after refresh", async () => {

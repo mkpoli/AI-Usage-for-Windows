@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Claude separates a signed-out account from a missing one. Claude Code blanks both tokens in `~/.claude/.credentials.json` when a refresh is rejected, and that state, along with a rejected refresh, now reads "Claude subscription session expired on this PC. Log in again with `claude` in a Windows terminal. Claude Code can keep running on an API key without it." The generic not-logged-in message sent people to the wrong install, since Claude Code keeps working on API billing and a login under WSL leaves the Windows credentials untouched.
+
 ## v0.4.1 - 2026-07-23
 
 ### Fixed

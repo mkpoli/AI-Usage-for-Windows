@@ -107,6 +107,14 @@ This is informational only. PromoClock is an independent public service, not an 
 
 **Fallback:** Windows Credential Manager, service name `Claude Code-credentials` (same JSON structure).
 
+The path resolves inside the Windows user profile. A Claude Code running under WSL keeps its own
+credentials in the Linux home directory, and a login there leaves the Windows record untouched.
+
+When a refresh is rejected, Claude Code overwrites the record in place with `accessToken` and
+`refreshToken` as empty strings and `expiresAt` at `0`, keeping the surrounding fields. That record
+means the account is signed out on this machine and reports as an expired session; a record with no
+`claudeAiOauth` at all reports as never logged in.
+
 ### Token Refresh
 
 Access tokens are short-lived JWTs. Refreshed proactively 5 minutes before expiration, or reactively on 401/403.

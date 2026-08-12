@@ -12,6 +12,11 @@
   const SCOPES =
     "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
+  // Claude Code falls back to API-key billing once the subscription session dies, so it keeps
+  // running and looking signed in. The message says so, otherwise the card reads as wrong.
+  const SIGNED_OUT_MESSAGE =
+    "Claude subscription session expired on this PC. Log in again with `claude` in a Windows " +
+    "terminal. Claude Code can keep running on an API key without it."
 
   // Rate-limit state persisted across probe() calls (module scope survives re-invocations).
   const MIN_USAGE_FETCH_INTERVAL_MS = 5 * 60 * 1000  // never poll more than once per 5 min
@@ -134,6 +139,16 @@
     return null
   }
 
+  function hasToken(value) {
+    return typeof value === "string" && value.trim() !== ""
+  }
+
+  // Claude Code empties both tokens in place when a refresh is rejected, so a
+  // stored record without either token means the account was signed out here.
+  function isClearedOauth(oauth) {
+    return !!oauth && !hasToken(oauth.accessToken) && !hasToken(oauth.refreshToken)
+  }
+
   function readEnvText(ctx, name) {
     try {
       const value = ctx.host.env.get(name)
@@ -241,6 +256,7 @@
 
   function loadStoredCredentials(ctx, suppressMissingWarn) {
     const credFile = getClaudeCredentialsPath(ctx)
+    let cleared = false
     // Try file first
     if (ctx.host.fs.exists(credFile)) {
       try {
@@ -252,6 +268,7 @@
             ctx.host.log.info("credentials loaded from file")
             return { oauth, source: "file", fullData: parsed }
           }
+          if (isClearedOauth(oauth)) cleared = true
         }
         ctx.host.log.warn("credentials file exists but no valid oauth data")
       } catch (e) {
@@ -269,14 +286,15 @@
           ctx.host.log.info("credentials loaded from keychain")
           return { oauth, source: keychainResult.source, fullData: parsed }
         }
+        if (isClearedOauth(oauth)) cleared = true
       }
       ctx.host.log.warn("keychain has data but no valid oauth")
     }
 
     if (!suppressMissingWarn) {
-      ctx.host.log.warn("no credentials found")
+      ctx.host.log.warn(cleared ? "stored credentials were cleared" : "no credentials found")
     }
-    return null
+    return cleared ? { cleared: true } : null
   }
 
   function loadCredentials(ctx) {
@@ -372,7 +390,8 @@
         if (body) errorCode = body.error || body.error_description
         ctx.host.log.error("refresh failed: status=" + resp.status + " error=" + String(errorCode))
         if (errorCode === "invalid_grant") {
-          throw "Session expired. Run `claude` to log in again."
+          // The same dead session, one step before Claude Code blanks the stored record.
+          throw SIGNED_OUT_MESSAGE
         }
         throw "Token expired. Run `claude` to log in again."
       }
@@ -729,6 +748,10 @@
   function probe(ctx) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
+      if (creds && creds.cleared) {
+        ctx.host.log.error("probe failed: stored credentials were cleared")
+        throw SIGNED_OUT_MESSAGE
+      }
       ctx.host.log.error("probe failed: not logged in")
       throw "Not logged in. Run `claude` to authenticate."
     }
