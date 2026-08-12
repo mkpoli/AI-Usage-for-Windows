@@ -27,7 +27,7 @@ export function PluginError({ message }: PluginErrorProps) {
       variant="destructive"
       className="flex items-center gap-2 [&>svg]:static [&>svg]:translate-y-0 [&>svg~*]:pl-0 [&>svg+div]:translate-y-0"
     >
-      <AlertCircle className="h-4 w-4" />
+      <AlertCircle className="h-4 w-4 shrink-0" />
       <AlertDescription className="select-text cursor-text">{formatMessage(message)}</AlertDescription>
     </Alert>
   )
