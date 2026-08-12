@@ -166,7 +166,8 @@ export function useSettingsBootstrap({
         let distros: string[] = []
         if (isTauri()) {
           try {
-            distros = await invoke<string[]>("list_wsl_distros")
+            const listed = await invoke<string[]>("list_wsl_distros")
+            if (Array.isArray(listed)) distros = listed
           } catch (error) {
             console.error("Failed to list WSL distros:", error)
           }

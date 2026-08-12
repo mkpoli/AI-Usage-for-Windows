@@ -200,6 +200,19 @@ describe("useSettingsBootstrap", () => {
     })
   })
 
+  it("keeps an empty list when the host answers with no array", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "list_wsl_distros") return Promise.resolve(null)
+      return Promise.resolve([])
+    })
+    const args = createArgs()
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setWslDistros).toHaveBeenCalledWith([])
+    })
+  })
+
   it("reports no distros when the host cannot list them", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     invokeMock.mockImplementation((command: string) => {
