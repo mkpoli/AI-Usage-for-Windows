@@ -8,6 +8,7 @@ import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 import type {
   AutoUpdateIntervalMinutes,
+  CliEnvironment,
   DisplayMode,
   GlobalShortcut,
   ResetTimerDisplayMode,
@@ -31,6 +32,7 @@ export type AppContentActionProps = {
   onResetTimerDisplayModeToggle: () => void
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
+  onCliEnvironmentChange: (value: CliEnvironment) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -49,6 +51,7 @@ export function AppContent({
   onResetTimerDisplayModeToggle,
   onGlobalShortcutChange,
   onStartOnLoginChange,
+  onCliEnvironmentChange,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -63,6 +66,8 @@ export function AppContent({
     globalShortcut,
     themeMode,
     startOnLogin,
+    cliEnvironment,
+    wslDistros,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       displayMode: state.displayMode,
@@ -71,6 +76,8 @@ export function AppContent({
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
       startOnLogin: state.startOnLogin,
+      cliEnvironment: state.cliEnvironment,
+      wslDistros: state.wslDistros,
     }))
   )
 
@@ -104,6 +111,9 @@ export function AppContent({
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}
         onStartOnLoginChange={onStartOnLoginChange}
+        cliEnvironment={cliEnvironment}
+        wslDistros={wslDistros}
+        onCliEnvironmentChange={onCliEnvironmentChange}
       />
     )
   }

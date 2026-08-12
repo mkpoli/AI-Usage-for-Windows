@@ -22,6 +22,12 @@ export type MenubarIconStyle = "provider" | "bars" | "donut";
 
 export type GlobalShortcut = string | null;
 
+/**
+ * Where provider credentials and transcripts are read from: the Windows user profile, or a WSL
+ * distro addressed as `wsl:<distro>`.
+ */
+export type CliEnvironment = string;
+
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
@@ -33,6 +39,7 @@ const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const CLI_ENVIRONMENT_KEY = "cliEnvironment";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 1;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -41,6 +48,9 @@ export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "bars";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = true;
+export const WINDOWS_CLI_ENVIRONMENT: CliEnvironment = "windows";
+export const WSL_CLI_ENVIRONMENT_PREFIX = "wsl:";
+export const DEFAULT_CLI_ENVIRONMENT: CliEnvironment = WINDOWS_CLI_ENVIRONMENT;
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [1, 5, 10, 30];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -315,5 +325,30 @@ export async function loadStartOnLogin(): Promise<boolean> {
 
 export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.set(START_ON_LOGIN_KEY, value);
+  await store.save();
+}
+
+export function isWslEnvironment(value: CliEnvironment): boolean {
+  return value.startsWith(WSL_CLI_ENVIRONMENT_PREFIX);
+}
+
+export function wslDistroName(value: CliEnvironment): string | null {
+  if (!isWslEnvironment(value)) return null;
+  const distro = value.slice(WSL_CLI_ENVIRONMENT_PREFIX.length).trim();
+  return distro || null;
+}
+
+export function wslEnvironmentValue(distro: string): CliEnvironment {
+  return `${WSL_CLI_ENVIRONMENT_PREFIX}${distro}`;
+}
+
+export async function loadCliEnvironment(): Promise<CliEnvironment> {
+  const stored = await store.get<unknown>(CLI_ENVIRONMENT_KEY);
+  if (typeof stored === "string" && stored.trim()) return stored.trim();
+  return DEFAULT_CLI_ENVIRONMENT;
+}
+
+export async function saveCliEnvironment(value: CliEnvironment): Promise<void> {
+  await store.set(CLI_ENVIRONMENT_KEY, value);
   await store.save();
 }

@@ -25,6 +25,7 @@ The app runs from the Windows system tray, stays out of the taskbar, and opens a
 - Start on Login enabled by default
 - Optional local HTTP API at `127.0.0.1:6736` when `AI_USAGE_ENABLE_LOCAL_HTTP_API=1` is set
 - Proxy support for provider HTTP requests
+- Reads CLI logins from the Windows profile or from a WSL distro
 - Plugin-based provider architecture
 
 ### Supported Providers
@@ -113,6 +114,7 @@ Providers without token refresh stop reporting once the stored cookie expires, a
 - [Qwen provider](docs/providers/qwen.md)
 - [Antigravity provider](docs/providers/antigravity.md)
 - [Cursor provider](docs/providers/cursor.md)
+- [CLI Location — Windows or WSL](docs/cli-location.md)
 - [Plugin API](docs/plugins/api.md)
 - [Local HTTP API](docs/local-http-api.md)
 - [Proxy support](docs/proxy.md)
@@ -202,6 +204,7 @@ AI Usage는 Windows 시스템 트레이에서만 동작하며 작업표시줄에
 - Start on Login 기본 활성화
 - `AI_USAGE_ENABLE_LOCAL_HTTP_API=1` 설정 시 `127.0.0.1:6736` 로컬 HTTP API 제공
 - Provider HTTP 요청 프록시 지원
+- CLI 로그인을 Windows 프로필 또는 WSL 배포판에서 읽기
 - 플러그인 기반 provider 구조
 
 ### 지원 Provider
@@ -290,6 +293,7 @@ Qwen은 두 가지 구독을 지원합니다. Token Plan은 5시간·주간 창�
 - [Qwen provider](docs/providers/qwen.md)
 - [Antigravity provider](docs/providers/antigravity.md)
 - [Cursor provider](docs/providers/cursor.md)
+- [CLI Location — Windows 또는 WSL](docs/cli-location.md)
 - [Plugin API](docs/plugins/api.md)
 - [Local HTTP API](docs/local-http-api.md)
 - [Proxy support](docs/proxy.md)

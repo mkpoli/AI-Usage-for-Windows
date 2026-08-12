@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- CLI Location, a Settings choice between the Windows user profile and any installed WSL distro. Coding CLIs installed in WSL keep their logins in the distro's home, which a Windows-only lookup never sees. With a distro selected, provider lookups resolve `~` through `\\wsl.localhost\<distro>`, falling back to Windows for anything the distro lacks; `~/.ai-usage` and `~/AppData` always stay on Windows. The section appears only on machines that have WSL. See [docs/cli-location.md](docs/cli-location.md).
+
 ### Changed
 
 - Claude separates a signed-out account from a missing one. Claude Code blanks both tokens in `~/.claude/.credentials.json` when a refresh is rejected, and that state, along with a rejected refresh, now reads "Claude subscription session expired on this PC. Log in again with `claude` in a Windows terminal. Claude Code can keep running on an API key without it." The generic not-logged-in message sent people to the wrong install, since Claude Code keeps working on API billing and a login under WSL leaves the Windows credentials untouched.
+
+- Token history no longer runs on the refresh path. Scanning a few gigabytes of transcripts takes about a minute, longer than the refresh interval, so `ccusage` now runs on its own thread and each refresh reads the result of the last completed run, held for 30 minutes.
 
 ### Fixed
 

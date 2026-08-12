@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -60,6 +60,9 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
+  cliEnvironment: "windows",
+  wslDistros: [] as string[],
+  onCliEnvironmentChange: vi.fn(),
 }
 
 afterEach(() => {
@@ -207,6 +210,40 @@ describe("SettingsPage", () => {
     )
     await userEvent.click(screen.getByText("Start on login"))
     expect(onStartOnLoginChange).toHaveBeenCalledWith(true)
+  })
+
+  it("hides the CLI location section on a machine without WSL", () => {
+    render(<SettingsPage {...defaultProps} />)
+    expect(screen.queryByText("CLI Location")).toBeNull()
+  })
+
+  it("lists Windows alongside every installed distro", () => {
+    render(<SettingsPage {...defaultProps} wslDistros={["Ubuntu", "Debian"]} />)
+    expect(screen.getByText("CLI Location")).toBeTruthy()
+    const group = screen.getByRole("radiogroup", { name: "CLI location" })
+    expect(within(group).getByText("Windows")).toBeTruthy()
+    expect(within(group).getByText("Ubuntu")).toBeTruthy()
+    expect(within(group).getByText("Debian")).toBeTruthy()
+  })
+
+  it("selects a distro", async () => {
+    const onCliEnvironmentChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        wslDistros={["Ubuntu"]}
+        onCliEnvironmentChange={onCliEnvironmentChange}
+      />
+    )
+    await userEvent.click(screen.getByText("Ubuntu"))
+    expect(onCliEnvironmentChange).toHaveBeenCalledWith("wsl:Ubuntu")
+  })
+
+  it("says which distro serves the logins", () => {
+    render(
+      <SettingsPage {...defaultProps} wslDistros={["Ubuntu"]} cliEnvironment="wsl:Ubuntu" />
+    )
+    expect(screen.getByText(/Logins are read from Ubuntu/)).toBeTruthy()
   })
 
 })

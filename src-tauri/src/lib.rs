@@ -1,3 +1,4 @@
+mod cli_environment;
 mod config;
 mod local_http_api;
 #[cfg(target_os = "windows")]
@@ -19,6 +20,7 @@ use uuid::Uuid;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const GLOBAL_SHORTCUT_STORE_KEY: &str = "globalShortcut";
+const CLI_ENVIRONMENT_STORE_KEY: &str = "cliEnvironment";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -313,6 +315,25 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     Ok(log_file.to_string_lossy().to_string())
 }
 
+/// WSL distros available as a CLI environment, in the order WSL reports them.
+#[tauri::command]
+fn list_wsl_distros() -> Vec<String> {
+    cli_environment::list_distros()
+}
+
+/// Point provider lookups at the Windows profile (`windows`) or a distro (`wsl:<distro>`).
+/// Returns the environment actually in force, which is the Windows profile when a distro
+/// cannot be reached.
+#[tauri::command]
+fn set_cli_environment(setting: String) -> String {
+    match cli_environment::apply_setting(&setting) {
+        cli_environment::CliEnvironment::Windows => cli_environment::WINDOWS_SETTING.to_string(),
+        cli_environment::CliEnvironment::Wsl(wsl) => {
+            format!("{}{}", cli_environment::WSL_SETTING_PREFIX, wsl.distro)
+        }
+    }
+}
+
 /// Update the global shortcut registration.
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
@@ -483,7 +504,9 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            update_global_shortcut
+            update_global_shortcut,
+            list_wsl_distros,
+            set_cli_environment
         ])
         .setup(|app| {
             use tauri::Manager;
@@ -493,6 +516,20 @@ pub fn run() {
 
             // Load config early (lazy init via OnceLock, zero-cost after)
             let _proxy = config::get_resolved_proxy();
+
+            // Point provider lookups at the stored CLI environment before the first probe runs.
+            {
+                use tauri_plugin_store::StoreExt;
+
+                let setting = app
+                    .handle()
+                    .store("settings.json")
+                    .ok()
+                    .and_then(|store| store.get(CLI_ENVIRONMENT_STORE_KEY))
+                    .and_then(|value| value.as_str().map(str::to_string))
+                    .unwrap_or_else(|| cli_environment::WINDOWS_SETTING.to_string());
+                cli_environment::apply_setting(&setting);
+            }
 
             let app_data_dir = app.path().app_data_dir().expect("no app data dir");
             let resource_dir = app.path().resource_dir().expect("no resource dir");

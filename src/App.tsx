@@ -11,7 +11,7 @@ import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-action
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { track } from "@/lib/analytics"
-import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
+import { getEnabledPluginIds, REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
 import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -58,6 +58,8 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setCliEnvironment,
+    setWslDistros,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -72,6 +74,8 @@ function App() {
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
+      setCliEnvironment: state.setCliEnvironment,
+      setWslDistros: state.setWslDistros,
     }))
   )
 
@@ -120,6 +124,8 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setCliEnvironment,
+    setWslDistros,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
@@ -141,16 +147,30 @@ function App() {
     scheduleTrayIconUpdate,
   })
 
+  const refreshEnabledPlugins = useCallback(() => {
+    if (!pluginSettings) return
+    const enabledIds = getEnabledPluginIds(pluginSettings)
+    if (enabledIds.length === 0) return
+    setLoadingForPlugins(enabledIds)
+    void startBatch(enabledIds).catch((error) => {
+      console.error("Failed to start probe batch:", error)
+      setErrorForPlugins(enabledIds, "Failed to start probe")
+    })
+  }, [pluginSettings, setErrorForPlugins, setLoadingForPlugins, startBatch])
+
   const {
     handleAutoUpdateIntervalChange,
     handleGlobalShortcutChange,
     handleStartOnLoginChange,
+    handleCliEnvironmentChange,
   } = useSettingsSystemActions({
     pluginSettings,
     setAutoUpdateInterval,
     setAutoUpdateNextAt,
     setGlobalShortcut,
     setStartOnLogin,
+    setCliEnvironment,
+    refreshEnabledPlugins,
     applyStartOnLogin,
   })
 
@@ -247,6 +267,7 @@ function App() {
         onResetTimerDisplayModeToggle: handleResetTimerDisplayModeToggle,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
+        onCliEnvironmentChange: handleCliEnvironmentChange,
       }}
     />
   )

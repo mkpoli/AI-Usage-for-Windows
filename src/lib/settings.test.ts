@@ -6,6 +6,7 @@ import {
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
+  DEFAULT_CLI_ENVIRONMENT,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   arePluginSettingsEqual,
@@ -16,6 +17,7 @@ import {
   loadMenubarIconStyle,
   loadPluginSettings,
   loadResetTimerDisplayMode,
+  loadCliEnvironment,
   loadStartOnLogin,
   migrateLegacyTraySettings,
   loadThemeMode,
@@ -26,8 +28,12 @@ import {
   saveMenubarIconStyle,
   savePluginSettings,
   saveResetTimerDisplayMode,
+  saveCliEnvironment,
   saveStartOnLogin,
   saveThemeMode,
+  isWslEnvironment,
+  wslDistroName,
+  wslEnvironmentValue,
 } from "@/lib/settings"
 import type { PluginMeta } from "@/lib/plugin-types"
 
@@ -390,6 +396,28 @@ describe("settings", () => {
   it("falls back to default for invalid start on login value", async () => {
     storeState.set("startOnLogin", "invalid")
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
+  })
+
+  it("loads the default CLI environment when missing", async () => {
+    await expect(loadCliEnvironment()).resolves.toBe(DEFAULT_CLI_ENVIRONMENT)
+  })
+
+  it("saves and loads a WSL distro selection", async () => {
+    await saveCliEnvironment(wslEnvironmentValue("Ubuntu"))
+    await expect(loadCliEnvironment()).resolves.toBe("wsl:Ubuntu")
+  })
+
+  it("falls back to the default for a blank CLI environment", async () => {
+    storeState.set("cliEnvironment", "   ")
+    await expect(loadCliEnvironment()).resolves.toBe(DEFAULT_CLI_ENVIRONMENT)
+  })
+
+  it("reads the distro name out of a CLI environment value", () => {
+    expect(isWslEnvironment("wsl:Ubuntu")).toBe(true)
+    expect(isWslEnvironment("windows")).toBe(false)
+    expect(wslDistroName("wsl:Ubuntu")).toBe("Ubuntu")
+    expect(wslDistroName("wsl:")).toBeNull()
+    expect(wslDistroName("windows")).toBeNull()
   })
 
 })

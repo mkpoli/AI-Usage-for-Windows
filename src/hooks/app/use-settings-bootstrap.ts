@@ -10,6 +10,7 @@ import type { PluginMeta } from "@/lib/plugin-types"
 import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_CLI_ENVIRONMENT,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -18,6 +19,7 @@ import {
   DEFAULT_THEME_MODE,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
+  loadCliEnvironment,
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
@@ -29,6 +31,7 @@ import {
   normalizePluginSettings,
   savePluginSettings,
   type AutoUpdateIntervalMinutes,
+  type CliEnvironment,
   type DisplayMode,
   type GlobalShortcut,
   type MenubarIconStyle,
@@ -47,6 +50,8 @@ type UseSettingsBootstrapArgs = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setCliEnvironment: (value: CliEnvironment) => void
+  setWslDistros: (value: string[]) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -62,6 +67,8 @@ export function useSettingsBootstrap({
   setGlobalShortcut,
   setStartOnLogin,
   setMenubarIconStyle,
+  setCliEnvironment,
+  setWslDistros,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -149,6 +156,22 @@ export function useSettingsBootstrap({
           console.error("Failed to migrate legacy tray settings:", error)
         }
 
+        let storedCliEnvironment = DEFAULT_CLI_ENVIRONMENT
+        try {
+          storedCliEnvironment = await loadCliEnvironment()
+        } catch (error) {
+          console.error("Failed to load CLI environment:", error)
+        }
+
+        let distros: string[] = []
+        if (isTauri()) {
+          try {
+            distros = await invoke<string[]>("list_wsl_distros")
+          } catch (error) {
+            console.error("Failed to list WSL distros:", error)
+          }
+        }
+
         let storedMenubarIconStyle = DEFAULT_MENUBAR_ICON_STYLE
         try {
           storedMenubarIconStyle = await loadMenubarIconStyle()
@@ -165,6 +188,8 @@ export function useSettingsBootstrap({
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           setMenubarIconStyle(storedMenubarIconStyle)
+          setCliEnvironment(storedCliEnvironment)
+          setWslDistros(distros)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -195,6 +220,8 @@ export function useSettingsBootstrap({
     setGlobalShortcut,
     setLoadingForPlugins,
     setMenubarIconStyle,
+    setCliEnvironment,
+    setWslDistros,
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,

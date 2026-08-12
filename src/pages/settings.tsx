@@ -24,7 +24,11 @@ import {
   DISPLAY_MODE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
+  WINDOWS_CLI_ENVIRONMENT,
+  wslDistroName,
+  wslEnvironmentValue,
   type AutoUpdateIntervalMinutes,
+  type CliEnvironment,
   type DisplayMode,
   type GlobalShortcut,
   type ResetTimerDisplayMode,
@@ -117,6 +121,9 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  cliEnvironment: CliEnvironment;
+  wslDistros: string[];
+  onCliEnvironmentChange: (value: CliEnvironment) => void;
 }
 
 export function SettingsPage({
@@ -135,6 +142,9 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  cliEnvironment,
+  wslDistros,
+  onCliEnvironmentChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -297,6 +307,46 @@ export function SettingsPage({
           Start on login
         </label>
       </section>
+      {wslDistros.length > 0 && (
+        <section>
+          <h3 className="text-lg font-semibold mb-0">CLI Location</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            Where your coding CLIs keep their logins
+          </p>
+          <div className="bg-muted/50 rounded-lg p-1">
+            <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="CLI location">
+              {[
+                { value: WINDOWS_CLI_ENVIRONMENT, label: "Windows" },
+                ...wslDistros.map((distro) => ({
+                  value: wslEnvironmentValue(distro),
+                  label: distro,
+                })),
+              ].map((option) => {
+                const isActive = option.value === cliEnvironment;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 min-w-20"
+                    onClick={() => onCliEnvironmentChange(option.value)}
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground mt-2">
+            {wslDistroName(cliEnvironment)
+              ? `Logins are read from ${wslDistroName(cliEnvironment)}, and from Windows for anything that distro does not have.`
+              : "Logins are read from your Windows user profile."}
+          </p>
+        </section>
+      )}
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>
         <p className="text-sm text-muted-foreground mb-2">

@@ -5,6 +5,7 @@ const {
   getEnabledPluginIdsMock,
   invokeMock,
   saveAutoUpdateIntervalMock,
+  saveCliEnvironmentMock,
   saveGlobalShortcutMock,
   saveStartOnLoginMock,
   trackMock,
@@ -12,6 +13,7 @@ const {
   trackMock: vi.fn(),
   getEnabledPluginIdsMock: vi.fn(),
   saveAutoUpdateIntervalMock: vi.fn(),
+  saveCliEnvironmentMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
   saveStartOnLoginMock: vi.fn(),
   invokeMock: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock("@/lib/analytics", () => ({
 vi.mock("@/lib/settings", () => ({
   getEnabledPluginIds: getEnabledPluginIdsMock,
   saveAutoUpdateInterval: saveAutoUpdateIntervalMock,
+  saveCliEnvironment: saveCliEnvironmentMock,
   saveGlobalShortcut: saveGlobalShortcutMock,
   saveStartOnLogin: saveStartOnLoginMock,
 }))
@@ -41,6 +44,7 @@ describe("useSettingsSystemActions", () => {
     saveAutoUpdateIntervalMock.mockReset()
     saveGlobalShortcutMock.mockReset()
     saveStartOnLoginMock.mockReset()
+    saveCliEnvironmentMock.mockReset()
     invokeMock.mockReset()
 
     getEnabledPluginIdsMock.mockImplementation((settings: { order: string[]; disabled: string[] }) =>
@@ -49,6 +53,7 @@ describe("useSettingsSystemActions", () => {
     saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
     saveGlobalShortcutMock.mockResolvedValue(undefined)
     saveStartOnLoginMock.mockResolvedValue(undefined)
+    saveCliEnvironmentMock.mockResolvedValue(undefined)
     invokeMock.mockResolvedValue(undefined)
   })
 
@@ -181,5 +186,62 @@ describe("useSettingsSystemActions", () => {
     })
 
     errorSpy.mockRestore()
+  })
+
+  it("switches the CLI environment and re-reads every provider", async () => {
+    const setCliEnvironment = vi.fn()
+    const refreshEnabledPlugins = vi.fn()
+    invokeMock.mockResolvedValue("wsl:Ubuntu")
+
+    const { result } = renderHook(() =>
+      useSettingsSystemActions({
+        pluginSettings: { order: ["codex"], disabled: [] },
+        setAutoUpdateInterval: vi.fn(),
+        setAutoUpdateNextAt: vi.fn(),
+        setGlobalShortcut: vi.fn(),
+        setStartOnLogin: vi.fn(),
+        setCliEnvironment,
+        refreshEnabledPlugins,
+        applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
+      })
+    )
+
+    act(() => {
+      result.current.handleCliEnvironmentChange("wsl:Ubuntu")
+    })
+
+    expect(setCliEnvironment).toHaveBeenCalledWith("wsl:Ubuntu")
+    expect(saveCliEnvironmentMock).toHaveBeenCalledWith("wsl:Ubuntu")
+    expect(invokeMock).toHaveBeenCalledWith("set_cli_environment", { setting: "wsl:Ubuntu" })
+    await waitFor(() => {
+      expect(refreshEnabledPlugins).toHaveBeenCalled()
+    })
+  })
+
+  it("stores what the host could reach when a distro is gone", async () => {
+    const setCliEnvironment = vi.fn()
+    invokeMock.mockResolvedValue("windows")
+
+    const { result } = renderHook(() =>
+      useSettingsSystemActions({
+        pluginSettings: { order: ["codex"], disabled: [] },
+        setAutoUpdateInterval: vi.fn(),
+        setAutoUpdateNextAt: vi.fn(),
+        setGlobalShortcut: vi.fn(),
+        setStartOnLogin: vi.fn(),
+        setCliEnvironment,
+        refreshEnabledPlugins: vi.fn(),
+        applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
+      })
+    )
+
+    act(() => {
+      result.current.handleCliEnvironmentChange("wsl:Gone")
+    })
+
+    await waitFor(() => {
+      expect(setCliEnvironment).toHaveBeenLastCalledWith("windows")
+      expect(saveCliEnvironmentMock).toHaveBeenLastCalledWith("windows")
+    })
   })
 })

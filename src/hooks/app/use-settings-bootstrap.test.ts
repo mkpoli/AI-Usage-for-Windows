@@ -11,6 +11,7 @@ const {
   isTauriMock,
   loadRuntimeInfoMock,
   loadAutoUpdateIntervalMock,
+  loadCliEnvironmentMock,
   loadDisplayModeMock,
   loadGlobalShortcutMock,
   loadMenubarIconStyleMock,
@@ -31,6 +32,7 @@ const {
   arePluginSettingsEqualMock: vi.fn(),
   getEnabledPluginIdsMock: vi.fn(),
   loadAutoUpdateIntervalMock: vi.fn(),
+  loadCliEnvironmentMock: vi.fn(),
   loadDisplayModeMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
@@ -61,6 +63,7 @@ vi.mock("@/lib/runtime-info", () => ({
 vi.mock("@/lib/settings", () => ({
   arePluginSettingsEqual: arePluginSettingsEqualMock,
   DEFAULT_AUTO_UPDATE_INTERVAL: 1,
+  DEFAULT_CLI_ENVIRONMENT: "windows",
   DEFAULT_DISPLAY_MODE: "left",
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_MENUBAR_ICON_STYLE: "bars",
@@ -69,6 +72,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_THEME_MODE: "system",
   getEnabledPluginIds: getEnabledPluginIdsMock,
   loadAutoUpdateInterval: loadAutoUpdateIntervalMock,
+  loadCliEnvironment: loadCliEnvironmentMock,
   loadDisplayMode: loadDisplayModeMock,
   loadGlobalShortcut: loadGlobalShortcutMock,
   loadMenubarIconStyle: loadMenubarIconStyleMock,
@@ -94,6 +98,8 @@ function createArgs() {
     setGlobalShortcut: vi.fn(),
     setStartOnLogin: vi.fn(),
     setMenubarIconStyle: vi.fn(),
+    setCliEnvironment: vi.fn(),
+    setWslDistros: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -110,6 +116,7 @@ describe("useSettingsBootstrap", () => {
     arePluginSettingsEqualMock.mockReset()
     getEnabledPluginIdsMock.mockReset()
     loadAutoUpdateIntervalMock.mockReset()
+    loadCliEnvironmentMock.mockReset()
     loadDisplayModeMock.mockReset()
     loadGlobalShortcutMock.mockReset()
     loadMenubarIconStyleMock.mockReset()
@@ -128,16 +135,19 @@ describe("useSettingsBootstrap", () => {
       supportsAutostart: true,
     })
     isAutostartEnabledMock.mockResolvedValue(true)
-    invokeMock.mockResolvedValue([
-      {
-        id: "codex",
-        name: "Codex",
-        iconUrl: "/codex.svg",
-        brandColor: "#000000",
-        lines: [],
-        primaryCandidates: [],
-      },
-    ])
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "list_wsl_distros") return Promise.resolve(["Ubuntu"])
+      return Promise.resolve([
+        {
+          id: "codex",
+          name: "Codex",
+          iconUrl: "/codex.svg",
+          brandColor: "#000000",
+          lines: [],
+          primaryCandidates: [],
+        },
+      ])
+    })
     loadPluginSettingsMock.mockResolvedValue({ order: ["codex"], disabled: [] })
     normalizePluginSettingsMock.mockImplementation((stored) => stored)
     arePluginSettingsEqualMock.mockReturnValue(true)
@@ -148,6 +158,7 @@ describe("useSettingsBootstrap", () => {
     loadGlobalShortcutMock.mockResolvedValue("CommandOrControl+Shift+O")
     loadMenubarIconStyleMock.mockResolvedValue("provider")
     loadStartOnLoginMock.mockResolvedValue(true)
+    loadCliEnvironmentMock.mockResolvedValue("wsl:Ubuntu")
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     savePluginSettingsMock.mockResolvedValue(undefined)
     getEnabledPluginIdsMock.mockReturnValue(["codex"])
@@ -177,6 +188,31 @@ describe("useSettingsBootstrap", () => {
     expect(isAutostartEnabledMock).not.toHaveBeenCalled()
     expect(disableAutostartMock).not.toHaveBeenCalled()
     expect(enableAutostartMock).not.toHaveBeenCalled()
+  })
+
+  it("loads the stored CLI environment and the installed distros", async () => {
+    const args = createArgs()
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setCliEnvironment).toHaveBeenCalledWith("wsl:Ubuntu")
+      expect(args.setWslDistros).toHaveBeenCalledWith(["Ubuntu"])
+    })
+  })
+
+  it("reports no distros when the host cannot list them", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "list_wsl_distros") return Promise.reject(new Error("wsl missing"))
+      return Promise.resolve([])
+    })
+    const args = createArgs()
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setWslDistros).toHaveBeenCalledWith([])
+    })
+    errorSpy.mockRestore()
   })
 
   it("falls back to default reset timer mode when loading fails", async () => {

@@ -134,7 +134,7 @@ fn read_github_cli_auth_token() -> Result<String, String> {
     Err(last_error)
 }
 
-fn configure_hidden_command_window(command: &mut Command) {
+pub(crate) fn configure_hidden_command_window(command: &mut Command) {
     #[cfg(target_os = "windows")]
     {
         command.creation_flags(CREATE_NO_WINDOW);
@@ -1658,10 +1658,13 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
 const CCUSAGE_VERSION: &str = "18.0.10";
 const CCUSAGE_CLAUDE_PACKAGE_NAME: &str = "ccusage";
 const CCUSAGE_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
-const CCUSAGE_TIMEOUT_SECS: u64 = 15;
+// Scanning a large transcript history takes far longer than a probe interval — around a minute for
+// a few gigabytes — so a query runs on its own thread and probes read the last answer it stored.
+const CCUSAGE_TIMEOUT_SECS: u64 = 180;
+const CCUSAGE_CACHE_TTL_SECS: u64 = 30 * 60;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
 
-#[derive(Default, serde::Deserialize)]
+#[derive(Clone, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CcusageQueryOpts {
     provider: Option<String>,
@@ -1711,6 +1714,8 @@ struct CcusageProviderConfig {
     package_name: &'static str,
     npm_exec_bin: &'static str,
     home_env_var: &'static str,
+    /// Where the CLI keeps its state when nothing overrides it.
+    default_home: &'static str,
 }
 
 fn parse_ccusage_provider(value: &str) -> Option<CcusageProvider> {
@@ -1739,11 +1744,13 @@ fn ccusage_provider_config(provider: CcusageProvider) -> CcusageProviderConfig {
             package_name: CCUSAGE_CLAUDE_PACKAGE_NAME,
             npm_exec_bin: "ccusage",
             home_env_var: "CLAUDE_CONFIG_DIR",
+            default_home: "~/.claude",
         },
         CcusageProvider::Codex => CcusageProviderConfig {
             package_name: CCUSAGE_CODEX_PACKAGE_NAME,
             npm_exec_bin: "ccusage-codex",
             home_env_var: "CODEX_HOME",
+            default_home: "~/.codex",
         },
     }
 }
@@ -2097,9 +2104,11 @@ fn run_ccusage_with_runner(
     let mut command = std::process::Command::new(program);
     configure_ccusage_command(&mut command, &args, enriched_path.as_deref());
 
-    if let Some(home_path) = ccusage_home_override(opts, provider) {
+    // A Windows runner reading a WSL environment needs the distro's path spelled out; ccusage's
+    // own default would land in the Windows profile and report the wrong machine's history.
+    if let Some(home_path) = ccusage_windows_home(opts, provider) {
         let config = ccusage_provider_config(provider);
-        command.env(config.home_env_var, expand_path(&home_path));
+        command.env(config.home_env_var, home_path);
     }
 
     let redacted_program = redact_log_message(program);
@@ -2111,13 +2120,173 @@ fn run_ccusage_with_runner(
         redacted_program
     );
 
+    run_ccusage_command(command, ccusage_runner_label(kind), plugin_id, CCUSAGE_TIMEOUT_SECS)
+}
+
+struct CcusageCacheEntry {
+    payload: Option<String>,
+    stored_at: std::time::Instant,
+    running: bool,
+}
+
+fn ccusage_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, CcusageCacheEntry>>
+{
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, CcusageCacheEntry>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Cache identity: the same query against a different environment is a different answer.
+fn ccusage_cache_key(opts: &CcusageQueryOpts, provider: CcusageProvider) -> String {
+    let environment = match crate::cli_environment::active() {
+        crate::cli_environment::CliEnvironment::Windows => {
+            crate::cli_environment::WINDOWS_SETTING.to_string()
+        }
+        crate::cli_environment::CliEnvironment::Wsl(wsl) => {
+            format!("{}{}", crate::cli_environment::WSL_SETTING_PREFIX, wsl.distro)
+        }
+    };
+    format!(
+        "{:?}|{}|{}|{}|{}",
+        provider,
+        environment,
+        opts.since.as_deref().unwrap_or(""),
+        opts.until.as_deref().unwrap_or(""),
+        ccusage_home_override(opts, provider).unwrap_or("")
+    )
+}
+
+/// Runs the query wherever the active environment says the CLI lives.
+fn run_ccusage_query(
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    plugin_id: &str,
+) -> Option<String> {
+    if let Some(wsl) = crate::cli_environment::active_wsl() {
+        if let Some(result) = run_ccusage_in_wsl(&wsl, opts, provider, plugin_id) {
+            return Some(result);
+        }
+    }
+
+    let runners = collect_ccusage_runners();
+    if runners.is_empty() {
+        log::warn!("[plugin:{}] no package runner found for ccusage query", plugin_id);
+        return None;
+    }
+
+    for (kind, program) in runners {
+        if let Some(result) = run_ccusage_with_runner(kind, &program, opts, provider, plugin_id) {
+            return Some(result);
+        }
+    }
+
+    log::warn!(
+        "[plugin:{}] ccusage query failed with all available runners",
+        plugin_id
+    );
+    None
+}
+
+/// The home a Windows-side ccusage run should read, expanded through the active CLI environment.
+fn ccusage_windows_home(opts: &CcusageQueryOpts, provider: CcusageProvider) -> Option<String> {
+    if let Some(home_path) = ccusage_home_override(opts, provider) {
+        return Some(expand_path(home_path));
+    }
+    if crate::cli_environment::active_wsl().is_none() {
+        return None;
+    }
+    Some(expand_path(ccusage_provider_config(provider).default_home))
+}
+
+/// Quotes a value for a POSIX shell.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r"'\''"))
+}
+
+fn shell_command_line(program: &str, args: &[String]) -> String {
+    let mut line = program.to_string();
+    for arg in args {
+        line.push(' ');
+        line.push_str(&shell_quote(arg));
+    }
+    line
+}
+
+/// Builds the shell script that runs ccusage inside a distro, preferring bun and falling back to
+/// npx. `$HOME/.bun/bin` is probed directly because a login shell does not always carry it.
+fn ccusage_wsl_script(
+    wsl: &crate::cli_environment::WslEnvironment,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+) -> Option<String> {
+    let mut env_assignment = String::new();
+    if let Some(home_path) = ccusage_home_override(opts, provider) {
+        let expanded = expand_path(home_path);
+        let linux_home = crate::cli_environment::to_linux_path(wsl, &expanded)?;
+        let config = ccusage_provider_config(provider);
+        env_assignment = format!("{}={} ", config.home_env_var, shell_quote(&linux_home));
+    }
+
+    let bunx_args = ccusage_runner_args(CcusageRunnerKind::Bunx, opts, provider);
+    let npx_args = ccusage_runner_args(CcusageRunnerKind::Npx, opts, provider);
+    let bunx_tail = shell_command_line("", &bunx_args);
+    let npx_line = shell_command_line("npx", &npx_args);
+    let bunx_line = shell_command_line("bunx", &bunx_args);
+
+    Some(format!(
+        concat!(
+            r#"if [ -x "$HOME/.bun/bin/bunx" ]; then exec env {env}"$HOME/.bun/bin/bunx"{bun_tail}; "#,
+            "elif command -v bunx >/dev/null 2>&1; then exec env {env}{bunx}; ",
+            "elif command -v npx >/dev/null 2>&1; then exec env {env}{npx}; ",
+            "else exit 127; fi"
+        ),
+        env = env_assignment,
+        bun_tail = bunx_tail,
+        bunx = bunx_line,
+        npx = npx_line
+    ))
+}
+
+/// Runs ccusage inside the selected WSL distro, where the CLI's own files are local rather than
+/// reached across the 9p bridge.
+fn run_ccusage_in_wsl(
+    wsl: &crate::cli_environment::WslEnvironment,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    plugin_id: &str,
+) -> Option<String> {
+    let script = ccusage_wsl_script(wsl, opts, provider)?;
+    let mut command = std::process::Command::new("wsl.exe");
+    command
+        .args(["-d", wsl.distro.as_str(), "-e", "sh", "-lc", script.as_str()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    configure_hidden_command_window(&mut command);
+
+    log::info!(
+        "[plugin:{}] ccusage query inside WSL distro {}",
+        plugin_id,
+        wsl.distro
+    );
+
+    run_ccusage_command(command, "wsl", plugin_id, CCUSAGE_TIMEOUT_SECS)
+}
+
+fn run_ccusage_command(
+    mut command: std::process::Command,
+    label: &str,
+    plugin_id: &str,
+    timeout_secs: u64,
+) -> Option<String> {
     let mut child = match command.spawn() {
         Ok(c) => c,
         Err(e) => {
             log::warn!(
                 "[plugin:{}] ccusage spawn failed for {}: {}",
                 plugin_id,
-                ccusage_runner_label(kind),
+                label,
                 e
             );
             return None;
@@ -2141,7 +2310,7 @@ fn run_ccusage_with_runner(
         })
     });
 
-    let timeout = std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS);
+    let timeout = std::time::Duration::from_secs(timeout_secs);
     let start = std::time::Instant::now();
     loop {
         match child.try_wait() {
@@ -2163,7 +2332,7 @@ fn run_ccusage_with_runner(
                     log::warn!(
                         "[plugin:{}] ccusage output parse failed for {}",
                         plugin_id,
-                        ccusage_runner_label(kind)
+                        label
                     );
                     return None;
                 }
@@ -2172,7 +2341,7 @@ fn run_ccusage_with_runner(
                 log::warn!(
                     "[plugin:{}] ccusage failed for {}: {}",
                     plugin_id,
-                    ccusage_runner_label(kind),
+                    label,
                     err.trim()
                 );
                 return None;
@@ -2186,8 +2355,8 @@ fn run_ccusage_with_runner(
                     log::warn!(
                         "[plugin:{}] ccusage timed out after {}s for {}",
                         plugin_id,
-                        CCUSAGE_TIMEOUT_SECS,
-                        ccusage_runner_label(kind)
+                        timeout_secs,
+                        label
                     );
                     return None;
                 }
@@ -2197,7 +2366,7 @@ fn run_ccusage_with_runner(
                 log::warn!(
                     "[plugin:{}] ccusage wait failed for {}: {}",
                     plugin_id,
-                    ccusage_runner_label(kind),
+                    label,
                     e
                 );
                 return None;
@@ -2227,36 +2396,76 @@ fn inject_ccusage<'js>(
                     }
                 };
                 let provider = resolve_ccusage_provider(&opts, &pid);
-                let runners = collect_ccusage_runners();
-                if runners.is_empty() {
-                    log::warn!("[plugin:{}] no package runner found for ccusage query", pid);
-                    return Ok(serde_json::json!({ "status": "no_runner" }).to_string());
+                let key = ccusage_cache_key(&opts, provider);
+
+                let (cached, needs_refresh) = {
+                    let mut cache = match ccusage_cache().lock() {
+                        Ok(cache) => cache,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    match cache.get_mut(&key) {
+                        Some(entry) => {
+                            let fresh =
+                                entry.stored_at.elapsed().as_secs() < CCUSAGE_CACHE_TTL_SECS;
+                            let start = !entry.running && !fresh;
+                            if start {
+                                entry.running = true;
+                            }
+                            (entry.payload.clone(), start)
+                        }
+                        None => {
+                            cache.insert(
+                                key.clone(),
+                                CcusageCacheEntry {
+                                    payload: None,
+                                    stored_at: std::time::Instant::now(),
+                                    running: true,
+                                },
+                            );
+                            (None, true)
+                        }
+                    }
+                };
+
+                if needs_refresh {
+                    let thread_opts = opts.clone();
+                    let thread_pid = pid.clone();
+                    let thread_key = key.clone();
+                    std::thread::spawn(move || {
+                        let result = run_ccusage_query(&thread_opts, provider, &thread_pid);
+                        let mut cache = match ccusage_cache().lock() {
+                            Ok(cache) => cache,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        let entry = cache.entry(thread_key).or_insert(CcusageCacheEntry {
+                            payload: None,
+                            stored_at: std::time::Instant::now(),
+                            running: false,
+                        });
+                        entry.running = false;
+                        // A failed run keeps the previous answer rather than blanking the card.
+                        if result.is_some() {
+                            entry.payload = result;
+                        }
+                        entry.stored_at = std::time::Instant::now();
+                    });
                 }
 
-                for (kind, program) in runners {
-                    if let Some(result) =
-                        run_ccusage_with_runner(kind, &program, &opts, provider, &pid)
-                    {
-                        let data: serde_json::Value = match serde_json::from_str(&result) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                log::warn!(
-                                    "[plugin:{}] ccusage normalized payload parse failed: {}",
-                                    pid,
-                                    e
-                                );
-                                continue;
-                            }
-                        };
-                        return Ok(serde_json::json!({ "status": "ok", "data": data }).to_string());
+                let Some(payload) = cached else {
+                    return Ok(serde_json::json!({ "status": "pending" }).to_string());
+                };
+
+                match serde_json::from_str::<serde_json::Value>(&payload) {
+                    Ok(data) => Ok(serde_json::json!({ "status": "ok", "data": data }).to_string()),
+                    Err(e) => {
+                        log::warn!(
+                            "[plugin:{}] ccusage cached payload parse failed: {}",
+                            pid,
+                            e
+                        );
+                        Ok(serde_json::json!({ "status": "runner_failed" }).to_string())
                     }
                 }
-
-                log::warn!(
-                    "[plugin:{}] ccusage query failed with all available runners",
-                    pid
-                );
-                Ok(serde_json::json!({ "status": "runner_failed" }).to_string())
             },
         )?,
     )?;
@@ -2678,14 +2887,15 @@ fn iso_now() -> String {
 }
 
 fn expand_path(path: &str) -> String {
+    // `~` means the home of the selected CLI environment, which may be a WSL distro.
     if path == "~" {
-        if let Some(home) = dirs::home_dir() {
+        if let Some(home) = crate::cli_environment::resolve_home_relative("") {
             return home.to_string_lossy().to_string();
         }
     }
     if path.starts_with("~/") || path.starts_with("~\\") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]).to_string_lossy().to_string();
+        if let Some(resolved) = crate::cli_environment::resolve_home_relative(&path[2..]) {
+            return resolved.to_string_lossy().to_string();
         }
     }
     #[cfg(target_os = "windows")]
@@ -3449,6 +3659,68 @@ mod tests {
                 CcusageRunnerKind::Npx
             ]
         );
+    }
+
+    #[test]
+    fn ccusage_wsl_script_prefers_bun_and_falls_back_to_npx() {
+        let wsl = crate::cli_environment::WslEnvironment {
+            distro: "Ubuntu".to_string(),
+            windows_home: std::path::PathBuf::from(r"\\wsl.localhost\Ubuntu\home\ada"),
+            linux_home: "/home/ada".to_string(),
+        };
+        let opts = CcusageQueryOpts {
+            since: Some("20260101".to_string()),
+            ..CcusageQueryOpts::default()
+        };
+
+        let script =
+            ccusage_wsl_script(&wsl, &opts, CcusageProvider::Claude).expect("script built");
+        assert!(script.contains(r#"[ -x "$HOME/.bun/bin/bunx" ]"#));
+        assert!(script.contains("command -v npx"));
+        assert!(script.contains("'--since' '20260101'"));
+        // Without an override the CLI inside the distro finds its own home.
+        assert!(!script.contains("CLAUDE_CONFIG_DIR"));
+    }
+
+    #[test]
+    fn ccusage_wsl_script_translates_a_home_override() {
+        let wsl = crate::cli_environment::WslEnvironment {
+            distro: "Ubuntu".to_string(),
+            windows_home: std::path::PathBuf::from(r"\\wsl.localhost\Ubuntu\home\ada"),
+            linux_home: "/home/ada".to_string(),
+        };
+        let opts = CcusageQueryOpts {
+            home_path: Some(r"\\wsl.localhost\Ubuntu\home\ada\.claude-work".to_string()),
+            ..CcusageQueryOpts::default()
+        };
+
+        let script =
+            ccusage_wsl_script(&wsl, &opts, CcusageProvider::Claude).expect("script built");
+        assert!(script.contains("CLAUDE_CONFIG_DIR='/home/ada/.claude-work'"));
+
+        // A home outside the distro cannot be reached from inside it.
+        let outside = CcusageQueryOpts {
+            home_path: Some(r"C:\Users\ada\.claude".to_string()),
+            ..CcusageQueryOpts::default()
+        };
+        assert!(ccusage_wsl_script(&wsl, &outside, CcusageProvider::Claude).is_none());
+    }
+
+    #[test]
+    fn ccusage_cache_key_separates_providers_and_windows() {
+        let opts = CcusageQueryOpts {
+            since: Some("20260101".to_string()),
+            ..CcusageQueryOpts::default()
+        };
+        let claude = ccusage_cache_key(&opts, CcusageProvider::Claude);
+        let codex = ccusage_cache_key(&opts, CcusageProvider::Codex);
+        assert_ne!(claude, codex);
+
+        let other_window = CcusageQueryOpts {
+            since: Some("20260201".to_string()),
+            ..CcusageQueryOpts::default()
+        };
+        assert_ne!(claude, ccusage_cache_key(&other_window, CcusageProvider::Claude));
     }
 
     #[test]

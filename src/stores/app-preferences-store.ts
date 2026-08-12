@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_CLI_ENVIRONMENT,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -8,6 +9,7 @@ import {
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   type AutoUpdateIntervalMinutes,
+  type CliEnvironment,
   type DisplayMode,
   type GlobalShortcut,
   type MenubarIconStyle,
@@ -22,6 +24,8 @@ type AppPreferencesStore = {
   resetTimerDisplayMode: ResetTimerDisplayMode
   globalShortcut: GlobalShortcut
   startOnLogin: boolean
+  cliEnvironment: CliEnvironment
+  wslDistros: string[]
   menubarIconStyle: MenubarIconStyle
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
@@ -29,6 +33,8 @@ type AppPreferencesStore = {
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
+  setCliEnvironment: (value: CliEnvironment) => void
+  setWslDistros: (value: string[]) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   resetState: () => void
 }
@@ -40,6 +46,8 @@ const initialState = {
   resetTimerDisplayMode: DEFAULT_RESET_TIMER_DISPLAY_MODE,
   globalShortcut: DEFAULT_GLOBAL_SHORTCUT,
   startOnLogin: DEFAULT_START_ON_LOGIN,
+  cliEnvironment: DEFAULT_CLI_ENVIRONMENT,
+  wslDistros: [] as string[],
   menubarIconStyle: DEFAULT_MENUBAR_ICON_STYLE,
 }
 
@@ -51,6 +59,8 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setResetTimerDisplayMode: (value) => set({ resetTimerDisplayMode: value }),
   setGlobalShortcut: (value) => set({ globalShortcut: value }),
   setStartOnLogin: (value) => set({ startOnLogin: value }),
+  setCliEnvironment: (value) => set({ cliEnvironment: value }),
+  setWslDistros: (value) => set({ wslDistros: value }),
   setMenubarIconStyle: (value) => set({ menubarIconStyle: value }),
   resetState: () => set(initialState),
 }))
