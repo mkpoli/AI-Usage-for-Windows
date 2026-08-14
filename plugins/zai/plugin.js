@@ -98,6 +98,40 @@
     return fallback
   }
 
+  // A plan meters its coding windows either in tokens or in credits, never both.
+  // Token entries carry a usable percentage only; credit entries carry real counts.
+  function findWindow(limits, unit) {
+    const tokens = findLimit(limits, "TOKENS_LIMIT", unit)
+    if (tokens) return { entry: tokens, counted: false }
+
+    const credits = findLimit(limits, "CREDIT_LIMIT", unit)
+    if (credits) return { entry: credits, counted: true }
+
+    return null
+  }
+
+  function windowLine(ctx, label, window, periodDurationMs) {
+    const entry = window.entry
+    const total = entry.usage
+    const opts = { label, periodDurationMs }
+
+    if (window.counted && Number.isFinite(total) && total > 0) {
+      opts.used = Number.isFinite(entry.currentValue) ? entry.currentValue : 0
+      opts.limit = total
+      opts.format = { kind: "count", suffix: "/ " + total }
+    } else {
+      opts.used = Number.isFinite(entry.percentage) ? entry.percentage : 0
+      opts.limit = 100
+      opts.format = { kind: "percent" }
+    }
+
+    if (entry.nextResetTime) {
+      opts.resetsAt = ctx.util.toIso(entry.nextResetTime)
+    }
+
+    return ctx.line.progress(opts)
+  }
+
   function probe(ctx) {
     const apiKey = loadApiKey(ctx)
     if (!apiKey) {
@@ -117,44 +151,18 @@
       return { plan, lines }
     }
 
-    const tokenLimit = findLimit(limits, "TOKENS_LIMIT", 3)
+    const session = findWindow(limits, 3)
 
-    if (!tokenLimit) {
+    if (!session) {
       lines.push(ctx.line.badge({ label: "Session", text: "No usage data", color: "#a3a3a3" }))
       return { plan, lines }
     }
 
-    const used = typeof tokenLimit.percentage === "number" ? tokenLimit.percentage : 0
-    const resetsAt = tokenLimit.nextResetTime ? ctx.util.toIso(tokenLimit.nextResetTime) : undefined
+    lines.push(windowLine(ctx, "Session", session, PERIOD_MS))
 
-    const progressOpts = {
-      label: "Session",
-      used,
-      limit: 100,
-      format: { kind: "percent" },
-      periodDurationMs: PERIOD_MS,
-    }
-    if (resetsAt) {
-      progressOpts.resetsAt = resetsAt
-    }
-    lines.push(ctx.line.progress(progressOpts))
-
-    const weeklyTokenLimit = findLimit(limits, "TOKENS_LIMIT", 6)
-    if (weeklyTokenLimit) {
-      const weeklyUsed = Number.isFinite(weeklyTokenLimit.percentage) ? weeklyTokenLimit.percentage : 0
-      const weeklyResetsAt = weeklyTokenLimit.nextResetTime ? ctx.util.toIso(weeklyTokenLimit.nextResetTime) : undefined
-
-      const weeklyOpts = {
-        label: "Weekly",
-        used: weeklyUsed,
-        limit: 100,
-        format: { kind: "percent" },
-        periodDurationMs: WEEK_MS,
-      }
-      if (weeklyResetsAt) {
-        weeklyOpts.resetsAt = weeklyResetsAt
-      }
-      lines.push(ctx.line.progress(weeklyOpts))
+    const weekly = findWindow(limits, 6)
+    if (weekly) {
+      lines.push(windowLine(ctx, "Weekly", weekly, WEEK_MS))
     }
 
     const timeLimit = findLimit(limits, "TIME_LIMIT")
