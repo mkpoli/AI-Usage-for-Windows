@@ -98,8 +98,50 @@ const QUOTA_RESPONSE_NO_TIME_LIMIT = {
   },
 }
 
+// Shape returned for a credit-metered plan such as GLM Coding Lite: no TOKENS_LIMIT
+// and no TIME_LIMIT, with `usage` holding the allowance and `currentValue` the spend.
+const QUOTA_RESPONSE_CREDITS = {
+  code: 200,
+  msg: "Operation successful",
+  data: {
+    limits: [
+      {
+        type: "CREDIT_LIMIT",
+        unit: 3,
+        number: 5,
+        usage: 2000,
+        currentValue: 36,
+        remaining: 1963,
+        percentage: 1,
+        nextResetTime: 1786727872266,
+      },
+      {
+        type: "CREDIT_LIMIT",
+        unit: 6,
+        number: 1,
+        usage: 10000,
+        currentValue: 36,
+        remaining: 9963,
+        percentage: 1,
+        nextResetTime: 1787314588998,
+      },
+    ],
+    level: "lite",
+  },
+  success: true,
+}
+
 const SUBSCRIPTION_RESPONSE = {
   data: [{ productName: "GLM Coding Max", nextRenewTime: "2026-03-12" }],
+}
+
+const mockCreditQuota = (ctx) => {
+  ctx.host.http.request.mockImplementation((opts) => {
+    if (opts.url.includes("subscription")) {
+      return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+    }
+    return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE_CREDITS) }
+  })
 }
 
 const mockHttp = (ctx) => {
@@ -527,5 +569,100 @@ describe("zai plugin", () => {
     expect(weekly).toBeTruthy()
     expect(weekly.used).toBe(75)
     expect(weekly.resetsAt).toBe(new Date(1738972800000).toISOString())
+  })
+
+  it("renders a credit-metered session as a count against its allowance", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockCreditQuota(ctx)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Session")
+    expect(line).toBeTruthy()
+    expect(line.type).toBe("progress")
+    expect(line.used).toBe(36)
+    expect(line.limit).toBe(2000)
+    expect(line.format).toEqual({ kind: "count", suffix: "/ 2000" })
+    expect(line.resetsAt).toBe(new Date(1786727872266).toISOString())
+    expect(line.periodDurationMs).toBe(5 * 60 * 60 * 1000)
+  })
+
+  it("renders a credit-metered weekly window against its own allowance", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockCreditQuota(ctx)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Weekly")
+    expect(line).toBeTruthy()
+    expect(line.used).toBe(36)
+    expect(line.limit).toBe(10000)
+    expect(line.format).toEqual({ kind: "count", suffix: "/ 10000" })
+    expect(line.resetsAt).toBe(new Date(1787314588998).toISOString())
+    expect(line.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it("keeps the plan and omits Web Searches when a credit plan sends no TIME_LIMIT", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockCreditQuota(ctx)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("GLM Coding Max")
+    expect(result.lines.find((l) => l.label === "Web Searches")).toBeUndefined()
+    expect(result.lines.find((l) => l.text === "No usage data")).toBeUndefined()
+  })
+
+  it("prefers a token limit over a credit limit for the same window", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          data: {
+            limits: [
+              { type: "CREDIT_LIMIT", unit: 3, usage: 2000, currentValue: 36, percentage: 1 },
+              { type: "TOKENS_LIMIT", unit: 3, usage: 800000000, currentValue: 1900000, percentage: 10 },
+            ],
+          },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Session")
+    expect(line.used).toBe(10)
+    expect(line.format).toEqual({ kind: "percent" })
+  })
+
+  it("falls back to percent when a credit entry carries no allowance", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          data: { limits: [{ type: "CREDIT_LIMIT", unit: 3, usage: 0, currentValue: 0, percentage: 4 }] },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Session")
+    expect(line.used).toBe(4)
+    expect(line.limit).toBe(100)
+    expect(line.format).toEqual({ kind: "percent" })
   })
 })

@@ -63,6 +63,9 @@ const defaultProps = {
   cliEnvironment: "windows",
   wslDistros: [] as string[],
   onCliEnvironmentChange: vi.fn(),
+  localHttpApi: false,
+  localHttpApiError: null as string | null,
+  onLocalHttpApiChange: vi.fn(),
 }
 
 afterEach(() => {
@@ -244,6 +247,48 @@ describe("SettingsPage", () => {
       <SettingsPage {...defaultProps} wslDistros={["Ubuntu"]} cliEnvironment="wsl:Ubuntu" />
     )
     expect(screen.getByText(/Logins are read from Ubuntu/)).toBeTruthy()
+  })
+
+
+  it("says nothing listens while the loopback API is off", () => {
+    render(<SettingsPage {...defaultProps} localHttpApi={false} />)
+
+    expect(screen.getByText("Nothing listens on the port while this is off.")).toBeInTheDocument()
+    expect(screen.getByText(/Serve usage on http:\/\/127\.0\.0\.1:6736/)).toBeInTheDocument()
+  })
+
+  it("points at the widget endpoint once the loopback API is on", () => {
+    render(<SettingsPage {...defaultProps} localHttpApi={true} />)
+
+    expect(
+      screen.getByText(/http:\/\/127\.0\.0\.1:6736\/v1\/rainmeter/)
+    ).toBeInTheDocument()
+  })
+
+  it("shows a port error in place of the endpoint hint", () => {
+    render(
+      <SettingsPage
+        {...defaultProps}
+        localHttpApi={true}
+        localHttpApiError="Port 6736 is in use by another program."
+      />
+    )
+
+    expect(screen.getByText("Port 6736 is in use by another program.")).toBeInTheDocument()
+    expect(screen.queryByText(/v1\/rainmeter/)).not.toBeInTheDocument()
+  })
+
+  it("reports the loopback API toggle", async () => {
+    const onLocalHttpApiChange = vi.fn()
+    render(
+      <SettingsPage {...defaultProps} onLocalHttpApiChange={onLocalHttpApiChange} />
+    )
+
+    await userEvent.click(
+      screen.getByLabelText(/Serve usage on/).querySelector("button") ??
+        screen.getByLabelText(/Serve usage on/)
+    )
+    expect(onLocalHttpApiChange).toHaveBeenCalledWith(true)
   })
 
 })

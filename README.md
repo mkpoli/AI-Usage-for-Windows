@@ -42,7 +42,7 @@ The Windows release currently bundles these providers:
 | [Sakana AI](docs/providers/sakana.md) | Available | Sakana AI Fugu 5-hour, weekly, and subscription details |
 | [Kimi](docs/providers/kimi.md) | Available | Kimi Code session and weekly usage, plan from membership level |
 | [Qwen](docs/providers/qwen.md) | Available | Qwen Token Plan and Coding Plan quotas, international and China consoles |
-| [Z.ai](docs/providers/zai.md) | Available | GLM Coding plan session and weekly token windows, web search quota |
+| [Z.ai](docs/providers/zai.md) | Available | GLM Coding plan session and weekly windows in credits or tokens, web search quota |
 | [Antigravity](docs/providers/antigravity.md) | Available | Windows SQLite and Cloud Code fallback path |
 | [Cursor](docs/providers/cursor.md) | Available | Cursor Desktop SQLite and CLI credential fallback |
 
@@ -70,7 +70,7 @@ Providers expose different things, so the app shows different lines for each. `�
 | Antigravity | ○ | ○ | ○ | ○ | ● | ○ | ○ |
 | Cursor | ○ | ○ | ● | ● | ○ | ○ | ● |
 
-Qwen covers two subscriptions: a Token Plan reporting five-hour and weekly windows as percentages, and a Coding Plan reporting five-hour, weekly, and monthly request counts (¹ monthly is Coding Plan only). Z.ai reports its GLM Coding token windows as percentages, and its monthly line (²) counts web search and reader calls rather than tokens. Codex adds a code-review quota line. Grok's shared pool resets weekly or monthly depending on the plan, and it adds a Grok Build product line. Copilot splits its monthly quota into Premium and Chat on paid plans, Chat and Completions on the free plan. Cursor splits its cycle into auto and API usage.
+Qwen covers two subscriptions: a Token Plan reporting five-hour and weekly windows as percentages, and a Coding Plan reporting five-hour, weekly, and monthly request counts (¹ monthly is Coding Plan only). Z.ai reports its GLM Coding windows as credits spent against each allowance, or as a percentage on token-metered plans, and its monthly line (²) counts web search and reader calls on the plans that meter them. Codex adds a code-review quota line. Grok's shared pool resets weekly or monthly depending on the plan, and it adds a Grok Build product line. Copilot splits its monthly quota into Premium and Chat on paid plans, Chat and Completions on the free plan. Cursor splits its cycle into auto and API usage.
 
 #### Credentials and refresh
 
@@ -102,7 +102,7 @@ Providers without token refresh stop reporting once the stored cookie expires, a
 | Sakana AI | read from the billing page rather than an API, so console redesigns can break it |
 | Kimi | session and weekly windows only, with no credit or spend view |
 | Qwen | the `sk-sp-` API key cannot read usage, so it needs console cookies; no per-model or token-level detail |
-| Z.ai | token windows arrive as percentages, so there is no token count; no credit or spend view, and the per-model split of web search calls is not shown |
+| Z.ai | token-metered plans report a percentage with no token count; no monetary spend view, and the per-model split of web search calls is not shown |
 | Antigravity | per-model quota fractions only, with no spend, no history, and no window totals |
 | Cursor | billing cycle only; team and enterprise accounts fall back to a request count |
 
@@ -226,7 +226,7 @@ AI Usage는 Windows 시스템 트레이에서만 동작하며 작업표시줄에
 | [Sakana AI](docs/providers/sakana.md) | 사용 가능 | Sakana AI Fugu의 5시간, 주간 및 구독 정보 |
 | [Kimi](docs/providers/kimi.md) | 사용 가능 | Kimi Code의 세션, 주간 사용량 및 membership level 기반 플랜 |
 | [Qwen](docs/providers/qwen.md) | 사용 가능 | Qwen Token Plan 및 Coding Plan quota, 국제·중국 콘솔 지원 |
-| [Z.ai](docs/providers/zai.md) | 사용 가능 | GLM Coding 플랜의 세션·주간 토큰 창과 웹 검색 quota |
+| [Z.ai](docs/providers/zai.md) | 사용 가능 | GLM Coding 플랜의 세션·주간 창을 크레딧 또는 토큰으로, 웹 검색 quota |
 | [Antigravity](docs/providers/antigravity.md) | 사용 가능 | Windows SQLite 및 Cloud Code fallback 경로 |
 | [Cursor](docs/providers/cursor.md) | 사용 가능 | Cursor Desktop SQLite 및 CLI credential fallback |
 
@@ -254,7 +254,7 @@ Provider마다 제공하는 항목이 달라 앱에 표시되는 줄도 달라�
 | Antigravity | ○ | ○ | ○ | ○ | ● | ○ | ○ |
 | Cursor | ○ | ○ | ● | ● | ○ | ○ | ● |
 
-Qwen은 두 가지 구독을 지원합니다. Token Plan은 5시간·주간 창을 백분율로, Coding Plan은 5시간·주간·월간을 요청 수로 보고합니다(¹ 월간은 Coding Plan 전용). Z.ai는 GLM Coding의 토큰 창을 백분율로 보고하며, 월간 줄(²)은 토큰이 아니라 웹 검색과 리더 호출 수를 셉니다. Codex에는 코드 리뷰 quota 줄이 추가됩니다. Grok의 공유 pool은 플랜에 따라 주간 또는 월간으로 초기화되며 Grok Build product 줄이 추가됩니다. Copilot은 월간 quota를 유료 플랜에서 Premium과 Chat으로, 무료 플랜에서 Chat과 Completions로 나눕니다. Cursor는 청구 주기를 auto 사용량과 API 사용량으로 나눕니다.
+Qwen은 두 가지 구독을 지원합니다. Token Plan은 5시간·주간 창을 백분율로, Coding Plan은 5시간·주간·월간을 요청 수로 보고합니다(¹ 월간은 Coding Plan 전용). Z.ai는 GLM Coding의 창을 각 할당량 대비 소비한 크레딧으로, 토큰 기반 플랜에서는 백분율로 보고하며, 월간 줄(²)은 웹 검색과 리더 호출 수를 세는 플랜에서만 나타납니다. Codex에는 코드 리뷰 quota 줄이 추가됩니다. Grok의 공유 pool은 플랜에 따라 주간 또는 월간으로 초기화되며 Grok Build product 줄이 추가됩니다. Copilot은 월간 quota를 유료 플랜에서 Premium과 Chat으로, 무료 플랜에서 Chat과 Completions로 나눕니다. Cursor는 청구 주기를 auto 사용량과 API 사용량으로 나눕니다.
 
 #### Credential과 갱신
 
@@ -286,7 +286,7 @@ Qwen은 두 가지 구독을 지원합니다. Token Plan은 5시간·주간 창�
 | Sakana AI | API가 아니라 billing 페이지에서 읽으므로 콘솔 개편에 영향을 받음 |
 | Kimi | 세션과 주간 창만 있고 크레딧·지출 화면이 없음 |
 | Qwen | `sk-sp-` API 키로는 사용량을 읽을 수 없어 콘솔 쿠키가 필요하며, 모델별·토큰 단위 정보가 없음 |
-| Z.ai | 토큰 창이 백분율로만 제공되어 토큰 수를 알 수 없고, 크레딧·지출 화면과 웹 검색의 모델별 내역이 없음 |
+| Z.ai | 토큰 기반 플랜은 백분율만 제공해 토큰 수를 알 수 없고, 금액 지출 화면과 웹 검색의 모델별 내역이 없음 |
 | Antigravity | 모델별 quota 비율만 있고 지출, 기록, 창 합계가 없음 |
 | Cursor | 청구 주기 기준만 제공. 팀·엔터프라이즈 계정은 요청 수로 대체됨 |
 

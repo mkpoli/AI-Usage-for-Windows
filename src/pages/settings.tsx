@@ -22,6 +22,7 @@ import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
+  LOCAL_HTTP_API_URL,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
   WINDOWS_CLI_ENVIRONMENT,
@@ -124,6 +125,9 @@ interface SettingsPageProps {
   cliEnvironment: CliEnvironment;
   wslDistros: string[];
   onCliEnvironmentChange: (value: CliEnvironment) => void;
+  localHttpApi: boolean;
+  localHttpApiError: string | null;
+  onLocalHttpApiChange: (value: boolean) => void;
 }
 
 export function SettingsPage({
@@ -145,6 +149,9 @@ export function SettingsPage({
   cliEnvironment,
   wslDistros,
   onCliEnvironmentChange,
+  localHttpApi,
+  localHttpApiError,
+  onLocalHttpApiChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -347,6 +354,29 @@ export function SettingsPage({
           </p>
         </section>
       )}
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Desktop Widgets</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Let Rainmeter and friends read your usage
+        </p>
+        <label className="flex items-center gap-2 text-sm select-none text-foreground">
+          <Checkbox
+            key={`local-http-api-${localHttpApi}`}
+            checked={localHttpApi}
+            onCheckedChange={(checked) => onLocalHttpApiChange(checked === true)}
+          />
+          Serve usage on {LOCAL_HTTP_API_URL}
+        </label>
+        {localHttpApiError ? (
+          <p className="text-sm text-destructive mt-2">{localHttpApiError}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground mt-2">
+            {localHttpApi
+              ? `Widgets on this computer can read ${LOCAL_HTTP_API_URL}/v1/rainmeter. Nothing leaves the machine.`
+              : "Nothing listens on the port while this is off."}
+          </p>
+        )}
+      </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>
         <p className="text-sm text-muted-foreground mb-2">

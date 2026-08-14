@@ -36,10 +36,29 @@ struct UsageApiCacheFile {
     snapshots: HashMap<String, CachedPluginSnapshot>,
 }
 
+/// The manifest facts the API needs to pick a provider's headline metric, kept
+/// alongside the cache so responses match what the tray shows.
+#[derive(Debug, Clone)]
+pub struct PluginMetricMeta {
+    pub id: String,
+    pub primary_candidates: Vec<String>,
+    pub gating_limits: Vec<String>,
+}
+
 pub(super) struct CacheState {
     pub snapshots: HashMap<String, CachedPluginSnapshot>,
     pub app_data_dir: PathBuf,
-    pub known_plugin_ids: Vec<String>,
+    pub plugins: Vec<PluginMetricMeta>,
+}
+
+impl CacheState {
+    pub(super) fn is_known(&self, plugin_id: &str) -> bool {
+        self.plugins.iter().any(|plugin| plugin.id == plugin_id)
+    }
+
+    pub(super) fn meta(&self, plugin_id: &str) -> Option<&PluginMetricMeta> {
+        self.plugins.iter().find(|plugin| plugin.id == plugin_id)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -52,7 +71,7 @@ pub(super) fn cache_state() -> &'static Mutex<CacheState> {
         Mutex::new(CacheState {
             snapshots: HashMap::new(),
             app_data_dir: PathBuf::new(),
-            known_plugin_ids: Vec::new(),
+            plugins: Vec::new(),
         })
     })
 }
@@ -105,12 +124,12 @@ fn save_cache(app_data_dir: &Path, snapshots: &HashMap<String, CachedPluginSnaps
 // Public API: initialise + update cache
 // ---------------------------------------------------------------------------
 
-pub fn init(app_data_dir: &Path, known_plugin_ids: Vec<String>) {
+pub fn init(app_data_dir: &Path, plugins: Vec<PluginMetricMeta>) {
     let snapshots = load_cache(app_data_dir);
     let mut state = cache_state().lock().expect("cache state poisoned");
     state.snapshots = snapshots;
     state.app_data_dir = app_data_dir.to_path_buf();
-    state.known_plugin_ids = known_plugin_ids;
+    state.plugins = plugins;
 }
 
 pub fn cache_successful_output(output: &PluginOutput) {
@@ -138,8 +157,23 @@ pub fn cache_successful_output(output: &PluginOutput) {
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SettingsFile {
     plugins: Option<PluginSettingsJson>,
+    local_http_api: Option<bool>,
+}
+
+/// Whether the loopback API should be serving, as stored by the settings UI.
+/// The socket stays closed until someone turns it on.
+pub fn is_enabled_in_settings(app_data_dir: &Path) -> bool {
+    let path = app_data_dir.join(SETTINGS_FILE_NAME);
+    let Ok(data) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    serde_json::from_str::<SettingsFile>(&data)
+        .ok()
+        .and_then(|settings| settings.local_http_api)
+        .unwrap_or(false)
 }
 
 #[derive(Deserialize)]
@@ -191,9 +225,9 @@ pub(super) fn enabled_snapshots_ordered(state: &CacheState) -> Vec<CachedPluginS
             ordered.push(id.clone());
         }
     }
-    for id in &state.known_plugin_ids {
-        if seen.insert(id.clone()) {
-            ordered.push(id.clone());
+    for plugin in &state.plugins {
+        if seen.insert(plugin.id.clone()) {
+            ordered.push(plugin.id.clone());
         }
     }
 

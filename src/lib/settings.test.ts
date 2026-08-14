@@ -18,6 +18,9 @@ import {
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadCliEnvironment,
+  DEFAULT_LOCAL_HTTP_API,
+  loadLocalHttpApi,
+  saveLocalHttpApi,
   loadStartOnLogin,
   migrateLegacyTraySettings,
   loadThemeMode,
@@ -396,6 +399,21 @@ describe("settings", () => {
   it("falls back to default for invalid start on login value", async () => {
     storeState.set("startOnLogin", "invalid")
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
+  })
+
+  it("keeps the loopback API closed when nothing is stored", async () => {
+    await expect(loadLocalHttpApi()).resolves.toBe(DEFAULT_LOCAL_HTTP_API)
+    expect(DEFAULT_LOCAL_HTTP_API).toBe(false)
+  })
+
+  it("saves and loads the loopback API choice", async () => {
+    await saveLocalHttpApi(true)
+    await expect(loadLocalHttpApi()).resolves.toBe(true)
+  })
+
+  it("falls back to closed for a non-boolean loopback API value", async () => {
+    storeState.set("localHttpApi", "yes")
+    await expect(loadLocalHttpApi()).resolves.toBe(DEFAULT_LOCAL_HTTP_API)
   })
 
   it("loads the default CLI environment when missing", async () => {

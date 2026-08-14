@@ -10,9 +10,9 @@ Tracks [Z.ai](https://z.ai) (Zhipu AI) usage quotas for GLM coding plans.
 - **Protocol:** REST (plain JSON)
 - **Base URL:** `https://api.z.ai/`
 - **Auth:** API key via environment variable (`ZAI_API_KEY`, fallback `GLM_API_KEY`)
-- **Session utilization:** percentage (0-100)
-- **Weekly utilization:** percentage (0-100)
-- **Web searches:** count-based (used / limit)
+- **Session and weekly utilization:** credits spent against the window's allowance on a credit-metered plan,
+  percentage (0-100) on a token-metered one
+- **Web searches:** count-based (used / limit), on plans that meter them
 - **Reset periods:** 5 hours (session), 7 days (weekly), monthly (web searches, from `nextResetTime` when the API sends
   one, otherwise the 1st of the next month at 00:00 UTC)
 
@@ -157,6 +157,31 @@ Returns session token usage and web search quotas.
 - `unit: 3, number: 5` — 5-hour rolling period (session)
 - `unit: 6, number: 7` — 7-day rolling period (weekly)
 
+**CREDIT_LIMIT:**
+
+Credit-metered plans send these in place of `TOKENS_LIMIT`, and a response carries one kind or the other rather than
+both. GLM Coding Lite answers with two credit windows and no `TIME_LIMIT`:
+
+```json
+{
+  "type": "CREDIT_LIMIT",
+  "unit": 3,
+  "number": 5,
+  "usage": 2000,
+  "currentValue": 36,
+  "remaining": 1963,
+  "percentage": 1,
+  "nextResetTime": 1786727872266
+}
+```
+
+- `usage` — credit allowance for the window
+- `currentValue` — credits spent
+- `remaining` — credits left, which can trail `usage - currentValue` by a credit
+- `percentage` — spend as an integer percentage, too coarse to display on its own at this scale
+- `unit: 3, number: 5` — 5-hour rolling period (session)
+- `unit: 6, number: 1` — weekly rolling period
+
 **TIME_LIMIT:**
 
 - `usage` — total web search/reader call limit (e.g. 4000)
@@ -168,11 +193,13 @@ Returns session token usage and web search quotas.
 
 ## Displayed Lines
 
-| Line         | Description                                                                  |
-|--------------|------------------------------------------------------------------------------|
-| Session      | Token usage as percentage (0-100%) with 5h reset timer                       |
-| Weekly       | Token usage as percentage (0-100%) with 7-day reset timer                   |
-| Web Searches | Web search/reader call count (used / limit), resets on the 1st of each month |
+| Line         | Description                                                                                    |
+|--------------|------------------------------------------------------------------------------------------------|
+| Session      | Credits spent against the 5-hour allowance, or token usage as a percentage, with a 5h reset timer |
+| Weekly       | The same metering over the 7-day window                                                        |
+| Web Searches | Web search/reader call count (used / limit), resets on the 1st of each month                   |
+
+A window with neither a token nor a credit entry shows a "No usage data" badge in place of the Session bar.
 
 ## Errors
 

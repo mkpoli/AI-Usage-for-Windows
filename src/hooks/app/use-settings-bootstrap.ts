@@ -13,15 +13,18 @@ import {
   DEFAULT_CLI_ENVIRONMENT,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
+  DEFAULT_LOCAL_HTTP_API,
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   getEnabledPluginIds,
+  LOCAL_HTTP_API_PORT_TAKEN,
   loadAutoUpdateInterval,
   loadCliEnvironment,
   loadDisplayMode,
   loadGlobalShortcut,
+  loadLocalHttpApi,
   loadMenubarIconStyle,
   migrateLegacyTraySettings,
   loadPluginSettings,
@@ -52,6 +55,8 @@ type UseSettingsBootstrapArgs = {
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setCliEnvironment: (value: CliEnvironment) => void
   setWslDistros: (value: string[]) => void
+  setLocalHttpApi: (value: boolean) => void
+  setLocalHttpApiError: (value: string | null) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -69,6 +74,8 @@ export function useSettingsBootstrap({
   setMenubarIconStyle,
   setCliEnvironment,
   setWslDistros,
+  setLocalHttpApi,
+  setLocalHttpApiError,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -180,8 +187,31 @@ export function useSettingsBootstrap({
           console.error("Failed to load menubar icon style:", error)
         }
 
+        let storedLocalHttpApi = DEFAULT_LOCAL_HTTP_API
+        try {
+          storedLocalHttpApi = await loadLocalHttpApi()
+        } catch (error) {
+          console.error("Failed to load local HTTP API setting:", error)
+        }
+
+        // The host opens the socket during startup, so a mismatch here means the
+        // port was taken by something else.
+        let localHttpApiError: string | null = null
+        if (storedLocalHttpApi && isTauri()) {
+          try {
+            const running = await invoke<boolean>("is_local_http_api_running")
+            if (!running) {
+              localHttpApiError = LOCAL_HTTP_API_PORT_TAKEN
+            }
+          } catch (error) {
+            console.error("Failed to read local HTTP API state:", error)
+          }
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
+          setLocalHttpApi(storedLocalHttpApi)
+          setLocalHttpApiError(localHttpApiError)
           setAutoUpdateInterval(storedInterval)
           setThemeMode(storedThemeMode)
           setDisplayMode(storedDisplayMode)
@@ -223,6 +253,8 @@ export function useSettingsBootstrap({
     setMenubarIconStyle,
     setCliEnvironment,
     setWslDistros,
+    setLocalHttpApi,
+    setLocalHttpApiError,
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,
