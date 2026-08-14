@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Z.ai provider covering the GLM Coding plan's five-hour and weekly token windows, both reported as percentages, and the monthly web search and reader call quota, plus the subscribed plan name. Reads the API key from the `ZAI_API_KEY` environment variable, or `GLM_API_KEY`. Bundled and disabled by default; enable it in Settings. See [docs/providers/zai.md](docs/providers/zai.md).
+
 ## v0.5.0 - 2026-08-12
 
 ### Added

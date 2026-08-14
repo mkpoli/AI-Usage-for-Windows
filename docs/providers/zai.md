@@ -13,30 +13,33 @@ Tracks [Z.ai](https://z.ai) (Zhipu AI) usage quotas for GLM coding plans.
 - **Session utilization:** percentage (0-100)
 - **Weekly utilization:** percentage (0-100)
 - **Web searches:** count-based (used / limit)
-- **Reset periods:** 5 hours (session), 7 days (weekly), monthly (web searches, from subscription renewal date)
+- **Reset periods:** 5 hours (session), 7 days (weekly), monthly (web searches, from `nextResetTime` when the API sends
+  one, otherwise the 1st of the next month at 00:00 UTC)
+
+Bundled and disabled by default.
 
 ## Setup
 
-1. [Subscribe to a GLM Coding plan](https://z.ai/subscribe) and get your API key from
-   the [Z.ai console](https://z.ai/manage-apikey/apikey-list)
-2. Set `ZAI_API_KEY` (fallback: `GLM_API_KEY`)
+1. [Subscribe to a GLM Coding plan](https://z.ai/subscribe), then create a key in the
+   [Z.ai console](https://z.ai/manage-apikey/apikey-list).
+2. Store the key as a user environment variable named `ZAI_API_KEY`. `GLM_API_KEY` is read as a fallback.
 
-AI Usage is a GUI app. A one-off `export ...` in a terminal session will not be visible when you launch AI Usage from
-Spotlight/Launchpad. Persist it, then restart AI Usage.
+   PowerShell:
 
-zsh (`~/.zshrc`):
+   ```powershell
+   [Environment]::SetEnvironmentVariable("ZAI_API_KEY", "YOUR_API_KEY", "User")
+   ```
 
-```bash
-export ZAI_API_KEY="YOUR_API_KEY"
-```
+   Command Prompt:
 
-fish (universal var):
+   ```cmd
+   setx ZAI_API_KEY "YOUR_API_KEY"
+   ```
 
-```fish
-set -Ux ZAI_API_KEY "YOUR_API_KEY"
-```
+   AI Usage reads the User and Machine environment variables through PowerShell, so the key has to be persisted. A
+   variable set for a single terminal session stays invisible to the tray app.
 
-3. Enable the Z.ai plugin in AI Usage settings
+3. Restart AI Usage and enable Z.ai in settings.
 
 ## Endpoints
 
@@ -83,7 +86,9 @@ Returns the user's active subscription(s). Used to extract the plan name.
 Used fields:
 
 - `productName` — plan display name (e.g. "GLM Coding Max")
-- `nextRenewTime` — monthly reset date for web search quota (ISO date, e.g. "2026-03-12")
+
+The whole call is optional: when it fails or returns no subscription, the provider drops the plan label and still
+reports usage.
 
 ### GET /api/monitor/usage/quota/limit
 
