@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.2 - 2026-08-15
+
+### Fixed
+
+- Z.ai reports usage on credit-metered plans. GLM Coding Lite returns its five-hour and weekly windows as `CREDIT_LIMIT` entries rather than the `TOKENS_LIMIT` the provider looked for, so every such account showed "No usage data" next to a correctly detected plan name. Both windows now render as credits spent against their allowance, which the percentage field is too coarse to convey at that scale, and a plan that sends no web search quota simply omits that line.
+
 ## v0.6.0 - 2026-08-15
 
 ### Added
