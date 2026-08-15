@@ -75,6 +75,10 @@ describe("useSettingsSystemActions", () => {
         setAutoUpdateNextAt,
         setGlobalShortcut: vi.fn(),
         setStartOnLogin: vi.fn(),
+        setCliEnvironment: vi.fn(),
+        setLocalHttpApi: vi.fn(),
+        setLocalHttpApiError: vi.fn(),
+        refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
       })
     )
@@ -100,6 +104,10 @@ describe("useSettingsSystemActions", () => {
         setAutoUpdateNextAt,
         setGlobalShortcut: vi.fn(),
         setStartOnLogin: vi.fn(),
+        setCliEnvironment: vi.fn(),
+        setLocalHttpApi: vi.fn(),
+        setLocalHttpApiError: vi.fn(),
+        refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
       })
     )
@@ -123,6 +131,10 @@ describe("useSettingsSystemActions", () => {
         setAutoUpdateNextAt: vi.fn(),
         setGlobalShortcut,
         setStartOnLogin,
+        setCliEnvironment: vi.fn(),
+        setLocalHttpApi: vi.fn(),
+        setLocalHttpApiError: vi.fn(),
+        refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin,
       })
     )
@@ -173,6 +185,10 @@ describe("useSettingsSystemActions", () => {
         setAutoUpdateNextAt: vi.fn(),
         setGlobalShortcut: vi.fn(),
         setStartOnLogin: vi.fn(),
+        setCliEnvironment: vi.fn(),
+        setLocalHttpApi: vi.fn(),
+        setLocalHttpApiError: vi.fn(),
+        refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin,
       })
     )
@@ -207,6 +223,8 @@ describe("useSettingsSystemActions", () => {
         setGlobalShortcut: vi.fn(),
         setStartOnLogin: vi.fn(),
         setCliEnvironment,
+        setLocalHttpApi: vi.fn(),
+        setLocalHttpApiError: vi.fn(),
         refreshEnabledPlugins,
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
       })
@@ -236,6 +254,8 @@ describe("useSettingsSystemActions", () => {
         setGlobalShortcut: vi.fn(),
         setStartOnLogin: vi.fn(),
         setCliEnvironment,
+        setLocalHttpApi: vi.fn(),
+        setLocalHttpApiError: vi.fn(),
         refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
       })
@@ -261,8 +281,10 @@ describe("useSettingsSystemActions", () => {
         setAutoUpdateNextAt: vi.fn(),
         setGlobalShortcut: vi.fn(),
         setStartOnLogin: vi.fn(),
+        setCliEnvironment: vi.fn(),
         setLocalHttpApi,
         setLocalHttpApiError,
+        refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
         ...overrides,
       })
@@ -290,8 +312,9 @@ describe("useSettingsSystemActions", () => {
     })
   })
 
-  it("reports the port as taken when the host cannot serve", async () => {
-    invokeMock.mockResolvedValue(false)
+  it("reports the port as taken when the host call rejects", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    invokeMock.mockRejectedValue(new Error("bind failed"))
     const { result, setLocalHttpApi, setLocalHttpApiError } = renderLocalHttpApiActions()
 
     act(() => {
@@ -306,22 +329,6 @@ describe("useSettingsSystemActions", () => {
     // The choice survives a busy port so the next launch can retry.
     expect(setLocalHttpApi).toHaveBeenCalledWith(true)
     expect(saveLocalHttpApiMock).toHaveBeenCalledWith(true)
-  })
-
-  it("reports the port as taken when the host call rejects", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-    invokeMock.mockRejectedValue(new Error("bind failed"))
-    const { result, setLocalHttpApiError } = renderLocalHttpApiActions()
-
-    act(() => {
-      result.current.handleLocalHttpApiChange(true)
-    })
-
-    await waitFor(() => {
-      expect(setLocalHttpApiError).toHaveBeenLastCalledWith(
-        "Port 6736 is in use by another program."
-      )
-    })
     errorSpy.mockRestore()
   })
 
@@ -339,6 +346,43 @@ describe("useSettingsSystemActions", () => {
     await waitFor(() => {
       expect(setLocalHttpApiError).toHaveBeenLastCalledWith(null)
     })
+  })
+
+  it("ignores a stale host answer once a newer toggle happened", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    let rejectEnable: (reason: unknown) => void = () => {}
+    invokeMock.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((_resolve, reject) => {
+          rejectEnable = reject
+        })
+    )
+    invokeMock.mockResolvedValueOnce(false)
+
+    const { result, setLocalHttpApiError } = renderLocalHttpApiActions()
+
+    act(() => {
+      result.current.handleLocalHttpApiChange(true)
+    })
+    act(() => {
+      result.current.handleLocalHttpApiChange(false)
+    })
+
+    await waitFor(() => {
+      expect(setLocalHttpApiError).toHaveBeenLastCalledWith(null)
+    })
+
+    // The delayed enable failure reports a busy port, which no longer applies
+    // once the API is switched off again.
+    await act(async () => {
+      rejectEnable(new Error("bind failed"))
+    })
+
+    expect(setLocalHttpApiError).toHaveBeenLastCalledWith(null)
+    expect(setLocalHttpApiError).not.toHaveBeenCalledWith(
+      "Port 6736 is in use by another program."
+    )
+    errorSpy.mockRestore()
   })
 
 })

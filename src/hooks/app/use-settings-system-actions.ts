@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { track } from "@/lib/analytics"
 import {
@@ -103,6 +103,11 @@ export function useSettingsSystemActions({
       })
   }, [refreshEnabledPlugins, setCliEnvironment])
 
+  // Numbers each toggle so a slow host answer only applies when its toggle is
+  // still the latest one; an earlier answer could otherwise flag the port after
+  // the API was already switched off.
+  const localHttpApiRequestId = useRef(0)
+
   const handleLocalHttpApiChange = useCallback((value: boolean) => {
     track("setting_changed", { setting: "local_http_api", value: value ? "true" : "false" })
     setLocalHttpApi(value)
@@ -111,13 +116,17 @@ export function useSettingsSystemActions({
       console.error("Failed to save local HTTP API setting:", error)
     })
     // The choice is kept even when the socket cannot open, so a freed port is
-    // picked up on the next launch.
+    // picked up on the next launch. The host rejects when it cannot apply the
+    // toggle, so a resolved answer always means the error can clear.
+    const requestId = ++localHttpApiRequestId.current
     invoke<boolean>("set_local_http_api_enabled", { enabled: value })
-      .then((running) => {
-        setLocalHttpApiError(value && !running ? LOCAL_HTTP_API_PORT_TAKEN : null)
+      .then(() => {
+        if (requestId !== localHttpApiRequestId.current) return
+        setLocalHttpApiError(null)
       })
       .catch((error) => {
         console.error("Failed to switch local HTTP API:", error)
+        if (requestId !== localHttpApiRequestId.current) return
         setLocalHttpApiError(value ? LOCAL_HTTP_API_PORT_TAKEN : null)
       })
   }, [setLocalHttpApi, setLocalHttpApiError])

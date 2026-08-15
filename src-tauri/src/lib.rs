@@ -335,7 +335,7 @@ fn set_cli_environment(setting: String) -> String {
 }
 
 /// Open or close the loopback usage API that desktop widgets read.
-/// Returns whether it is serving, which stays false when the port is taken.
+/// Returns whether it is serving; enabling errors when the port is taken.
 #[tauri::command]
 fn set_local_http_api_enabled(enabled: bool) -> Result<bool, String> {
     if !enabled {
