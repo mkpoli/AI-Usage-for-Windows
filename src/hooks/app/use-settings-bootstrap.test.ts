@@ -14,6 +14,7 @@ const {
   loadCliEnvironmentMock,
   loadDisplayModeMock,
   loadGlobalShortcutMock,
+  loadLocalHttpApiMock,
   loadMenubarIconStyleMock,
   loadPluginSettingsMock,
   loadResetTimerDisplayModeMock,
@@ -35,6 +36,7 @@ const {
   loadCliEnvironmentMock: vi.fn(),
   loadDisplayModeMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
+  loadLocalHttpApiMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
   loadResetTimerDisplayModeMock: vi.fn(),
@@ -66,15 +68,18 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_CLI_ENVIRONMENT: "windows",
   DEFAULT_DISPLAY_MODE: "left",
   DEFAULT_GLOBAL_SHORTCUT: null,
+  DEFAULT_LOCAL_HTTP_API: false,
   DEFAULT_MENUBAR_ICON_STYLE: "bars",
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
   DEFAULT_START_ON_LOGIN: true,
   DEFAULT_THEME_MODE: "system",
   getEnabledPluginIds: getEnabledPluginIdsMock,
+  LOCAL_HTTP_API_PORT_TAKEN: "Port 6736 is in use by another program.",
   loadAutoUpdateInterval: loadAutoUpdateIntervalMock,
   loadCliEnvironment: loadCliEnvironmentMock,
   loadDisplayMode: loadDisplayModeMock,
   loadGlobalShortcut: loadGlobalShortcutMock,
+  loadLocalHttpApi: loadLocalHttpApiMock,
   loadMenubarIconStyle: loadMenubarIconStyleMock,
   loadPluginSettings: loadPluginSettingsMock,
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
@@ -100,6 +105,8 @@ function createArgs() {
     setMenubarIconStyle: vi.fn(),
     setCliEnvironment: vi.fn(),
     setWslDistros: vi.fn(),
+    setLocalHttpApi: vi.fn(),
+    setLocalHttpApiError: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -119,6 +126,7 @@ describe("useSettingsBootstrap", () => {
     loadCliEnvironmentMock.mockReset()
     loadDisplayModeMock.mockReset()
     loadGlobalShortcutMock.mockReset()
+    loadLocalHttpApiMock.mockReset()
     loadMenubarIconStyleMock.mockReset()
     loadPluginSettingsMock.mockReset()
     loadResetTimerDisplayModeMock.mockReset()
@@ -158,6 +166,7 @@ describe("useSettingsBootstrap", () => {
     loadGlobalShortcutMock.mockResolvedValue("CommandOrControl+Shift+O")
     loadMenubarIconStyleMock.mockResolvedValue("provider")
     loadStartOnLoginMock.mockResolvedValue(true)
+    loadLocalHttpApiMock.mockResolvedValue(false)
     loadCliEnvironmentMock.mockResolvedValue("wsl:Ubuntu")
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     savePluginSettingsMock.mockResolvedValue(undefined)
@@ -246,4 +255,62 @@ describe("useSettingsBootstrap", () => {
 
     errorSpy.mockRestore()
   })
+
+  it("passes the stored loopback API choice through", async () => {
+    loadLocalHttpApiMock.mockResolvedValue(false)
+    const args = createArgs()
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setLocalHttpApi).toHaveBeenCalledWith(false)
+    })
+    expect(args.setLocalHttpApiError).toHaveBeenCalledWith(null)
+    expect(invokeMock).not.toHaveBeenCalledWith("is_local_http_api_running")
+  })
+
+  it("flags a busy port when the host did not open the socket at startup", async () => {
+    loadLocalHttpApiMock.mockResolvedValue(true)
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "list_wsl_distros") return Promise.resolve(["Ubuntu"])
+      if (command === "is_local_http_api_running") return Promise.resolve(false)
+      return Promise.resolve([])
+    })
+    const args = createArgs()
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setLocalHttpApiError).toHaveBeenCalledWith(
+        "Port 6736 is in use by another program."
+      )
+    })
+    expect(args.setLocalHttpApi).toHaveBeenCalledWith(true)
+  })
+
+  it("leaves no error when the host is already serving", async () => {
+    loadLocalHttpApiMock.mockResolvedValue(true)
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "list_wsl_distros") return Promise.resolve(["Ubuntu"])
+      if (command === "is_local_http_api_running") return Promise.resolve(true)
+      return Promise.resolve([])
+    })
+    const args = createArgs()
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setLocalHttpApiError).toHaveBeenCalledWith(null)
+    })
+  })
+
+  it("falls back to the default loopback API choice when loading fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    loadLocalHttpApiMock.mockRejectedValue(new Error("store unavailable"))
+    const args = createArgs()
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setLocalHttpApi).toHaveBeenCalledWith(false)
+    })
+    errorSpy.mockRestore()
+  })
+
 })

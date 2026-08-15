@@ -3,9 +3,11 @@ import { invoke } from "@tauri-apps/api/core"
 import { track } from "@/lib/analytics"
 import {
   getEnabledPluginIds,
+  LOCAL_HTTP_API_PORT_TAKEN,
   saveAutoUpdateInterval,
   saveCliEnvironment,
   saveGlobalShortcut,
+  saveLocalHttpApi,
   saveStartOnLogin,
   type AutoUpdateIntervalMinutes,
   type CliEnvironment,
@@ -20,6 +22,8 @@ type UseSettingsSystemActionsArgs = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setCliEnvironment: (value: CliEnvironment) => void
+  setLocalHttpApi: (value: boolean) => void
+  setLocalHttpApiError: (value: string | null) => void
   refreshEnabledPlugins: () => void
   applyStartOnLogin: (value: boolean) => Promise<void>
 }
@@ -31,6 +35,8 @@ export function useSettingsSystemActions({
   setGlobalShortcut,
   setStartOnLogin,
   setCliEnvironment,
+  setLocalHttpApi,
+  setLocalHttpApiError,
   refreshEnabledPlugins,
   applyStartOnLogin,
 }: UseSettingsSystemActionsArgs) {
@@ -97,10 +103,30 @@ export function useSettingsSystemActions({
       })
   }, [refreshEnabledPlugins, setCliEnvironment])
 
+  const handleLocalHttpApiChange = useCallback((value: boolean) => {
+    track("setting_changed", { setting: "local_http_api", value: value ? "true" : "false" })
+    setLocalHttpApi(value)
+    setLocalHttpApiError(null)
+    void saveLocalHttpApi(value).catch((error) => {
+      console.error("Failed to save local HTTP API setting:", error)
+    })
+    // The choice is kept even when the socket cannot open, so a freed port is
+    // picked up on the next launch.
+    invoke<boolean>("set_local_http_api_enabled", { enabled: value })
+      .then((running) => {
+        setLocalHttpApiError(value && !running ? LOCAL_HTTP_API_PORT_TAKEN : null)
+      })
+      .catch((error) => {
+        console.error("Failed to switch local HTTP API:", error)
+        setLocalHttpApiError(value ? LOCAL_HTTP_API_PORT_TAKEN : null)
+      })
+  }, [setLocalHttpApi, setLocalHttpApiError])
+
   return {
     handleAutoUpdateIntervalChange,
     handleGlobalShortcutChange,
     handleStartOnLoginChange,
     handleCliEnvironmentChange,
+    handleLocalHttpApiChange,
   }
 }

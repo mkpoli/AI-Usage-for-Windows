@@ -79,6 +79,29 @@ pub struct LoadedPlugin {
     pub icon_data_url: String,
 }
 
+/// Progress-line labels that may act as the provider's headline metric, best first.
+/// Only progress lines carrying `primaryOrder` qualify.
+pub fn primary_candidates(manifest: &PluginManifest) -> Vec<String> {
+    let mut candidates: Vec<&ManifestLine> = manifest
+        .lines
+        .iter()
+        .filter(|line| line.line_type == "progress" && line.primary_order.is_some())
+        .collect();
+    candidates.sort_by_key(|line| line.primary_order.unwrap());
+    candidates.iter().map(|line| line.label.clone()).collect()
+}
+
+/// Progress-line labels that gate availability: a full gating bucket blocks the
+/// provider regardless of how empty the headline bar is.
+pub fn gating_limits(manifest: &PluginManifest) -> Vec<String> {
+    manifest
+        .lines
+        .iter()
+        .filter(|line| line.line_type == "progress" && line.gating)
+        .map(|line| line.label.clone())
+        .collect()
+}
+
 pub fn load_plugins_from_dir(plugins_dir: &std::path::Path) -> Vec<LoadedPlugin> {
     let mut plugins = Vec::new();
     let entries = match std::fs::read_dir(plugins_dir) {

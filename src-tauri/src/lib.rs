@@ -334,6 +334,24 @@ fn set_cli_environment(setting: String) -> String {
     }
 }
 
+/// Open or close the loopback usage API that desktop widgets read.
+/// Returns whether it is serving, which stays false when the port is taken.
+#[tauri::command]
+fn set_local_http_api_enabled(enabled: bool) -> Result<bool, String> {
+    if !enabled {
+        local_http_api::stop_server();
+        return Ok(false);
+    }
+    local_http_api::start_server()?;
+    Ok(true)
+}
+
+/// Whether the loopback usage API is serving right now.
+#[tauri::command]
+fn is_local_http_api_running() -> bool {
+    local_http_api::is_running()
+}
+
 /// Update the global shortcut registration.
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
@@ -404,26 +422,8 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
     plugins
         .into_iter()
         .map(|plugin| {
-            // Extract primary candidates: progress lines with primary_order, sorted by order
-            let mut candidates: Vec<_> = plugin
-                .manifest
-                .lines
-                .iter()
-                .filter(|line| line.line_type == "progress" && line.primary_order.is_some())
-                .collect();
-            candidates.sort_by_key(|line| line.primary_order.unwrap());
-            let primary_candidates: Vec<String> =
-                candidates.iter().map(|line| line.label.clone()).collect();
-
-            // Gating limits cap availability: a full gating bucket blocks the
-            // provider regardless of the primary bar.
-            let gating_limits: Vec<String> = plugin
-                .manifest
-                .lines
-                .iter()
-                .filter(|line| line.line_type == "progress" && line.gating)
-                .map(|line| line.label.clone())
-                .collect();
+            let primary_candidates = plugin_engine::manifest::primary_candidates(&plugin.manifest);
+            let gating_limits = plugin_engine::manifest::gating_limits(&plugin.manifest);
 
             PluginMeta {
                 id: plugin.manifest.id,
@@ -506,7 +506,9 @@ pub fn run() {
             get_log_path,
             update_global_shortcut,
             list_wsl_distros,
-            set_cli_environment
+            set_cli_environment,
+            set_local_http_api_enabled,
+            is_local_http_api_running
         ])
         .setup(|app| {
             use tauri::Manager;
@@ -546,19 +548,29 @@ pub fn run() {
             );
 
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);
-            let known_plugin_ids: Vec<String> =
-                plugins.iter().map(|p| p.manifest.id.clone()).collect();
+            let plugin_metrics: Vec<local_http_api::PluginMetricMeta> = plugins
+                .iter()
+                .map(|plugin| local_http_api::PluginMetricMeta {
+                    id: plugin.manifest.id.clone(),
+                    primary_candidates: plugin_engine::manifest::primary_candidates(
+                        &plugin.manifest,
+                    ),
+                    gating_limits: plugin_engine::manifest::gating_limits(&plugin.manifest),
+                })
+                .collect();
             app.manage(Mutex::new(AppState {
                 plugins,
                 app_data_dir: app_data_dir.clone(),
                 app_version: app.package_info().version.to_string(),
             }));
 
-            local_http_api::init(&app_data_dir, known_plugin_ids);
-            if std::env::var_os("AI_USAGE_ENABLE_LOCAL_HTTP_API").is_some() {
-                local_http_api::start_server();
+            local_http_api::init(&app_data_dir, plugin_metrics);
+            if local_http_api::is_enabled_in_settings(&app_data_dir) {
+                if let Err(e) = local_http_api::start_server() {
+                    log::warn!("local HTTP API could not start: {}", e);
+                }
             } else {
-                log::info!("local HTTP API disabled by default");
+                log::info!("local HTTP API off");
             }
 
             tray::create(app.handle())?;

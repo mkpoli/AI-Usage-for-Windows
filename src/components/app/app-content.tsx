@@ -33,6 +33,7 @@ export type AppContentActionProps = {
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
   onCliEnvironmentChange: (value: CliEnvironment) => void
+  onLocalHttpApiChange: (value: boolean) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -52,6 +53,7 @@ export function AppContent({
   onGlobalShortcutChange,
   onStartOnLoginChange,
   onCliEnvironmentChange,
+  onLocalHttpApiChange,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -68,6 +70,8 @@ export function AppContent({
     startOnLogin,
     cliEnvironment,
     wslDistros,
+    localHttpApi,
+    localHttpApiError,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       displayMode: state.displayMode,
@@ -78,6 +82,8 @@ export function AppContent({
       startOnLogin: state.startOnLogin,
       cliEnvironment: state.cliEnvironment,
       wslDistros: state.wslDistros,
+      localHttpApi: state.localHttpApi,
+      localHttpApiError: state.localHttpApiError,
     }))
   )
 
@@ -114,6 +120,9 @@ export function AppContent({
         cliEnvironment={cliEnvironment}
         wslDistros={wslDistros}
         onCliEnvironmentChange={onCliEnvironmentChange}
+        localHttpApi={localHttpApi}
+        localHttpApiError={localHttpApiError}
+        onLocalHttpApiChange={onLocalHttpApiChange}
       />
     )
   }

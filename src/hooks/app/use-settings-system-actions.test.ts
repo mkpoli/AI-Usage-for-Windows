@@ -7,6 +7,7 @@ const {
   saveAutoUpdateIntervalMock,
   saveCliEnvironmentMock,
   saveGlobalShortcutMock,
+  saveLocalHttpApiMock,
   saveStartOnLoginMock,
   trackMock,
 } = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const {
   saveAutoUpdateIntervalMock: vi.fn(),
   saveCliEnvironmentMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
+  saveLocalHttpApiMock: vi.fn(),
   saveStartOnLoginMock: vi.fn(),
   invokeMock: vi.fn(),
 }))
@@ -29,9 +31,11 @@ vi.mock("@/lib/analytics", () => ({
 
 vi.mock("@/lib/settings", () => ({
   getEnabledPluginIds: getEnabledPluginIdsMock,
+  LOCAL_HTTP_API_PORT_TAKEN: "Port 6736 is in use by another program.",
   saveAutoUpdateInterval: saveAutoUpdateIntervalMock,
   saveCliEnvironment: saveCliEnvironmentMock,
   saveGlobalShortcut: saveGlobalShortcutMock,
+  saveLocalHttpApi: saveLocalHttpApiMock,
   saveStartOnLogin: saveStartOnLoginMock,
 }))
 
@@ -43,6 +47,7 @@ describe("useSettingsSystemActions", () => {
     getEnabledPluginIdsMock.mockReset()
     saveAutoUpdateIntervalMock.mockReset()
     saveGlobalShortcutMock.mockReset()
+    saveLocalHttpApiMock.mockReset()
     saveStartOnLoginMock.mockReset()
     saveCliEnvironmentMock.mockReset()
     invokeMock.mockReset()
@@ -52,6 +57,7 @@ describe("useSettingsSystemActions", () => {
     )
     saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
     saveGlobalShortcutMock.mockResolvedValue(undefined)
+    saveLocalHttpApiMock.mockResolvedValue(undefined)
     saveStartOnLoginMock.mockResolvedValue(undefined)
     saveCliEnvironmentMock.mockResolvedValue(undefined)
     invokeMock.mockResolvedValue(undefined)
@@ -244,4 +250,95 @@ describe("useSettingsSystemActions", () => {
       expect(saveCliEnvironmentMock).toHaveBeenLastCalledWith("windows")
     })
   })
+
+  function renderLocalHttpApiActions(overrides: Record<string, unknown> = {}) {
+    const setLocalHttpApi = vi.fn()
+    const setLocalHttpApiError = vi.fn()
+    const { result } = renderHook(() =>
+      useSettingsSystemActions({
+        pluginSettings: { order: ["codex"], disabled: [] },
+        setAutoUpdateInterval: vi.fn(),
+        setAutoUpdateNextAt: vi.fn(),
+        setGlobalShortcut: vi.fn(),
+        setStartOnLogin: vi.fn(),
+        setLocalHttpApi,
+        setLocalHttpApiError,
+        applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
+        ...overrides,
+      })
+    )
+    return { result, setLocalHttpApi, setLocalHttpApiError }
+  }
+
+  it("opens the loopback API and clears any earlier port error", async () => {
+    invokeMock.mockResolvedValue(true)
+    const { result, setLocalHttpApi, setLocalHttpApiError } = renderLocalHttpApiActions()
+
+    act(() => {
+      result.current.handleLocalHttpApiChange(true)
+    })
+
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
+      setting: "local_http_api",
+      value: "true",
+    })
+    expect(setLocalHttpApi).toHaveBeenCalledWith(true)
+    expect(saveLocalHttpApiMock).toHaveBeenCalledWith(true)
+    expect(invokeMock).toHaveBeenCalledWith("set_local_http_api_enabled", { enabled: true })
+    await waitFor(() => {
+      expect(setLocalHttpApiError).toHaveBeenLastCalledWith(null)
+    })
+  })
+
+  it("reports the port as taken when the host cannot serve", async () => {
+    invokeMock.mockResolvedValue(false)
+    const { result, setLocalHttpApi, setLocalHttpApiError } = renderLocalHttpApiActions()
+
+    act(() => {
+      result.current.handleLocalHttpApiChange(true)
+    })
+
+    await waitFor(() => {
+      expect(setLocalHttpApiError).toHaveBeenLastCalledWith(
+        "Port 6736 is in use by another program."
+      )
+    })
+    // The choice survives a busy port so the next launch can retry.
+    expect(setLocalHttpApi).toHaveBeenCalledWith(true)
+    expect(saveLocalHttpApiMock).toHaveBeenCalledWith(true)
+  })
+
+  it("reports the port as taken when the host call rejects", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    invokeMock.mockRejectedValue(new Error("bind failed"))
+    const { result, setLocalHttpApiError } = renderLocalHttpApiActions()
+
+    act(() => {
+      result.current.handleLocalHttpApiChange(true)
+    })
+
+    await waitFor(() => {
+      expect(setLocalHttpApiError).toHaveBeenLastCalledWith(
+        "Port 6736 is in use by another program."
+      )
+    })
+    errorSpy.mockRestore()
+  })
+
+  it("closes the loopback API without leaving an error behind", async () => {
+    invokeMock.mockResolvedValue(false)
+    const { result, setLocalHttpApi, setLocalHttpApiError } = renderLocalHttpApiActions()
+
+    act(() => {
+      result.current.handleLocalHttpApiChange(false)
+    })
+
+    expect(setLocalHttpApi).toHaveBeenCalledWith(false)
+    expect(saveLocalHttpApiMock).toHaveBeenCalledWith(false)
+    expect(invokeMock).toHaveBeenCalledWith("set_local_http_api_enabled", { enabled: false })
+    await waitFor(() => {
+      expect(setLocalHttpApiError).toHaveBeenLastCalledWith(null)
+    })
+  })
+
 })

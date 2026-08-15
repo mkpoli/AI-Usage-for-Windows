@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Rainmeter skins that show a provider's usage bar on the desktop, one skin per provider, in [`rainmeter/`](rainmeter/). They read the loopback API, so no credentials pass through Rainmeter. See [docs/rainmeter.md](docs/rainmeter.md).
+
+- `GET /v1/rainmeter` and `GET /v1/rainmeter/<providerId>` on the local HTTP API, answering with flat `key=value` text in a fixed line order. Rainmeter extracts values by regular expression, which a variable-length JSON array of metric lines defeats. A known provider with no cached usage answers with the same keys and empty values, so a widget can tell a closed app from an unmeasured provider.
+
+- Desktop Widgets in Settings, which opens and closes the local HTTP API. A busy port is reported in the panel and the choice is kept, so a freed port is picked up at the next launch.
+
+### Changed
+
+- The local HTTP API is switched on in Settings instead of through the `AI_USAGE_ENABLE_LOCAL_HTTP_API` environment variable. It stays off by default.
+
 ## v0.6.2 - 2026-08-15
 
 ### Fixed
