@@ -361,7 +361,6 @@ export function SettingsPage({
         </p>
         <label className="flex items-center gap-2 text-sm select-none text-foreground">
           <Checkbox
-            key={`local-http-api-${localHttpApi}`}
             checked={localHttpApi}
             onCheckedChange={(checked) => onLocalHttpApiChange(checked === true)}
           />
