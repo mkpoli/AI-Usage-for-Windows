@@ -114,6 +114,9 @@ UpdateRate=60
 RegExp=(?siU)^Id=(.*)\r?\nName=(.*)\r?\nPlan=(.*)\r?\nFetchedAt=(.*)\r?\nLabel=(.*)\r?\nPercent=(.*)\r?\nGatedPercent=(.*)\r?\nUsed=(.*)\r?\nLimit=(.*)\r?\nValue=(.*)\r?\nResetsAt=(.*)\r?\nResetsInSec=(.*)\r?\nBars=(.*)\r?\n
 ```
 
+`UpdateRate` counts seconds, the same unit the Settings table uses for
+`UpdateSeconds`.
+
 `StringIndex` then picks a field: 1 `Id`, 2 `Name`, 3 `Plan`, 4 `FetchedAt`,
 5 `Label`, 6 `Percent`, 7 `GatedPercent`, 8 `Used`, 9 `Limit`, 10 `Value`,
 11 `ResetsAt`, 12 `ResetsInSec`, 13 `Bars`.

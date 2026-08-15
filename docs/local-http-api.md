@@ -4,6 +4,8 @@ AI Usage exposes a read-only HTTP API on the loopback interface so other local a
 
 **Base URL:** `http://127.0.0.1:6736`
 
+The server binds `127.0.0.1` only, so it is reachable from this machine alone.
+
 The server is off by default so the app does not open a loopback socket during normal startup. Turn it on under **Settings > Desktop Widgets**; the choice is stored as `localHttpApi` in `settings.json` and applies immediately and on every later launch. When the port is already taken, the settings panel says so and the choice is kept, so a freed port is picked up at the next launch.
 
 ## Routes
@@ -96,6 +98,8 @@ Access-Control-Allow-Headers: Content-Type
 ```
 
 `OPTIONS` requests return **204 No Content** with these headers for preflight support.
+
+The open origin is deliberate: widgets and local pages that read this API run under origins the app cannot know ahead of time. The loopback bind is the boundary, since any program running on this machine could read the same numbers directly from the app. Responses carry usage totals only, no tokens or credentials.
 
 ## Error Responses
 
