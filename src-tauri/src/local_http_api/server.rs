@@ -3,13 +3,19 @@ use super::rainmeter;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 use time::OffsetDateTime;
 
 const BIND_ADDR: &str = "127.0.0.1:6736";
 /// How long a stopped server keeps its socket open, at most.
 const ACCEPT_POLL_MS: u64 = 200;
+/// How long a start or stop waits for the accept loop to release the port.
+/// The loop wakes every `ACCEPT_POLL_MS`, so this leaves wide margin.
+const STOP_GRACE: Duration = Duration::from_secs(2);
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
+/// True while an accept loop owns the listener socket.
+static LOOP_ALIVE: AtomicBool = AtomicBool::new(false);
 
 // ---------------------------------------------------------------------------
 // HTTP server
@@ -26,6 +32,10 @@ pub fn start_server() -> Result<(), String> {
     if RUNNING.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
+
+    // A previous loop may still be in its last poll cycle; bind only after it
+    // has dropped the listener, so a quick stop-then-start does not race it.
+    wait_for_loop_exit();
 
     let listener = match TcpListener::bind(BIND_ADDR) {
         Ok(listener) => listener,
@@ -44,13 +54,28 @@ pub fn start_server() -> Result<(), String> {
         return Err(format!("could not configure {}: {}", BIND_ADDR, e));
     }
 
+    LOOP_ALIVE.store(true, Ordering::SeqCst);
     std::thread::spawn(move || accept_loop(listener));
     Ok(())
 }
 
+/// Stop serving and wait until the accept loop has released the port, so the
+/// next `start_server` can bind again at once.
 pub fn stop_server() {
-    if RUNNING.swap(false, Ordering::SeqCst) {
-        log::info!("local HTTP API stopping");
+    if !RUNNING.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    log::info!("local HTTP API stopping");
+    wait_for_loop_exit();
+}
+
+fn wait_for_loop_exit() {
+    let deadline = Instant::now() + STOP_GRACE;
+    while LOOP_ALIVE.load(Ordering::SeqCst) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if LOOP_ALIVE.load(Ordering::SeqCst) {
+        log::warn!("local HTTP API accept loop did not release the port in time");
     }
 }
 
@@ -62,11 +87,17 @@ fn accept_loop(listener: TcpListener) {
                 std::thread::spawn(move || handle_connection(stream));
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(std::time::Duration::from_millis(ACCEPT_POLL_MS));
+                std::thread::sleep(Duration::from_millis(ACCEPT_POLL_MS));
             }
-            Err(e) => log::debug!("local HTTP API accept error: {}", e),
+            Err(e) => {
+                // Sleep on unexpected errors too, so a persistent one does
+                // not spin this loop at full CPU.
+                log::debug!("local HTTP API accept error: {}", e);
+                std::thread::sleep(Duration::from_millis(ACCEPT_POLL_MS));
+            }
         }
     }
+    LOOP_ALIVE.store(false, Ordering::SeqCst);
     log::info!("local HTTP API stopped");
 }
 
@@ -74,15 +105,29 @@ fn handle_connection(mut stream: TcpStream) {
     // Windows hands out accepted sockets in the listener's non-blocking mode,
     // where a read can return before the request has arrived.
     let _ = stream.set_nonblocking(false);
-    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
 
-    // Read request (up to 4 KB is plenty for a request line + headers)
+    // Routing only reads the request line, but one recv can return before the
+    // line is complete on a fragmented or slow connection, so keep reading
+    // until the terminator arrives or the buffer is full.
     let mut buf = [0u8; 4096];
-    let n = match stream.read(&mut buf) {
-        Ok(n) => n,
-        Err(_) => return,
-    };
-    let request = String::from_utf8_lossy(&buf[..n]);
+    let mut filled = 0usize;
+    loop {
+        match stream.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => {
+                filled += n;
+                if buf[..filled].iter().any(|&byte| byte == b'\n') || filled == buf.len() {
+                    break;
+                }
+            }
+            Err(_) => return,
+        }
+    }
+    if filled == 0 {
+        return;
+    }
+    let request = String::from_utf8_lossy(&buf[..filled]);
 
     // Parse request line: "METHOD /path HTTP/1.x\r\n..."
     let first_line = request.lines().next().unwrap_or("");
@@ -279,6 +324,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn route_get_usage_returns_200() {
         let resp = route("GET", "/v1/usage");
         assert!(resp.starts_with("HTTP/1.1 200"));
@@ -361,6 +407,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn route_rainmeter_collection_serves_plain_text() {
         let resp = route("GET", "/v1/rainmeter");
         assert!(resp.starts_with("HTTP/1.1 200"));
