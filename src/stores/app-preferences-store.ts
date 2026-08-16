@@ -4,6 +4,7 @@ import {
   DEFAULT_CLI_ENVIRONMENT,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
+  DEFAULT_LOCAL_HTTP_API,
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
@@ -27,6 +28,8 @@ type AppPreferencesStore = {
   cliEnvironment: CliEnvironment
   wslDistros: string[]
   menubarIconStyle: MenubarIconStyle
+  localHttpApi: boolean
+  localHttpApiError: string | null
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
@@ -36,6 +39,8 @@ type AppPreferencesStore = {
   setCliEnvironment: (value: CliEnvironment) => void
   setWslDistros: (value: string[]) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setLocalHttpApi: (value: boolean) => void
+  setLocalHttpApiError: (value: string | null) => void
   resetState: () => void
 }
 
@@ -49,6 +54,8 @@ const initialState = {
   cliEnvironment: DEFAULT_CLI_ENVIRONMENT,
   wslDistros: [] as string[],
   menubarIconStyle: DEFAULT_MENUBAR_ICON_STYLE,
+  localHttpApi: DEFAULT_LOCAL_HTTP_API,
+  localHttpApiError: null as string | null,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -62,5 +69,7 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setCliEnvironment: (value) => set({ cliEnvironment: value }),
   setWslDistros: (value) => set({ wslDistros: value }),
   setMenubarIconStyle: (value) => set({ menubarIconStyle: value }),
+  setLocalHttpApi: (value) => set({ localHttpApi: value }),
+  setLocalHttpApiError: (value) => set({ localHttpApiError: value }),
   resetState: () => set(initialState),
 }))

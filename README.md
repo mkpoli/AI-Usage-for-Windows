@@ -23,7 +23,8 @@ The app runs from the Windows system tray, stays out of the taskbar, and opens a
 - Global shortcut support
 - Automatic refresh, defaulting to 1 minute
 - Start on Login enabled by default
-- Optional local HTTP API at `127.0.0.1:6736` when `AI_USAGE_ENABLE_LOCAL_HTTP_API=1` is set
+- Optional local HTTP API at `127.0.0.1:6736`, switched on under Settings > Desktop Widgets
+- Rainmeter desktop widgets, one skin per provider
 - Proxy support for provider HTTP requests
 - Reads CLI logins from the Windows profile or from a WSL distro
 - Plugin-based provider architecture
@@ -122,6 +123,7 @@ Providers without token refresh stop reporting once the stored cookie expires, a
 - [CLI Location — Windows or WSL](docs/cli-location.md)
 - [Plugin API](docs/plugins/api.md)
 - [Local HTTP API](docs/local-http-api.md)
+- [Rainmeter widget](docs/rainmeter.md)
 - [Proxy support](docs/proxy.md)
 - [Capture logs](docs/capture-logs.md)
 - [Privacy Policy](PRIVACY.md)
@@ -207,7 +209,8 @@ AI Usage는 Windows 시스템 트레이에서만 동작하며 작업표시줄에
 - 전역 단축키 지원
 - 기본 1분 자동 새로고침
 - Start on Login 기본 활성화
-- `AI_USAGE_ENABLE_LOCAL_HTTP_API=1` 설정 시 `127.0.0.1:6736` 로컬 HTTP API 제공
+- 설정 > Desktop Widgets에서 켜는 `127.0.0.1:6736` 로컬 HTTP API
+- Provider별 Rainmeter 데스크톱 위젯
 - Provider HTTP 요청 프록시 지원
 - CLI 로그인을 Windows 프로필 또는 WSL 배포판에서 읽기
 - 플러그인 기반 provider 구조
@@ -306,6 +309,7 @@ Qwen은 두 가지 구독을 지원합니다. Token Plan은 5시간·주간 창�
 - [CLI Location — Windows 또는 WSL](docs/cli-location.md)
 - [Plugin API](docs/plugins/api.md)
 - [Local HTTP API](docs/local-http-api.md)
+- [Rainmeter widget](docs/rainmeter.md)
 - [Proxy support](docs/proxy.md)
 - [Capture logs](docs/capture-logs.md)
 - [개인정보 처리방침](PRIVACY.md)

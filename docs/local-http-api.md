@@ -4,9 +4,13 @@ AI Usage exposes a read-only HTTP API on the loopback interface so other local a
 
 **Base URL:** `http://127.0.0.1:6736`
 
-The server is disabled by default so the app does not open a loopback socket during normal startup. To enable it, set `AI_USAGE_ENABLE_LOCAL_HTTP_API=1` before launching AI Usage. If the port is already in use, the feature is silently disabled for that session.
+The server binds `127.0.0.1` only, so it is reachable from this machine alone.
+
+The server is off by default so the app does not open a loopback socket during normal startup. Turn it on under **Settings > Desktop Widgets**; the choice is stored as `localHttpApi` in `settings.json` and applies immediately and on every later launch. When the port is already taken, the settings panel says so and the choice is kept, so a freed port is picked up at the next launch.
 
 ## Routes
+
+Two shapes of the same cached data: JSON for programs that parse it, and flat text for Rainmeter, whose regex-based reader needs a fixed line order. See [rainmeter.md](rainmeter.md) for the text format.
 
 ### `GET /v1/usage`
 
@@ -20,6 +24,19 @@ Returns a single cached usage snapshot for the given provider.
 
 - **200 OK** — JSON object with cached snapshot.
 - **204 No Content** — Provider is known but has no cached snapshot yet.
+- **404 Not Found** — Provider ID is unknown.
+
+### `GET /v1/rainmeter`
+
+Flat `key=value` text for all **enabled** providers, each key prefixed by the provider's 1-based position, led by a `Count` line.
+
+- **200 OK** — `text/plain; charset=utf-8`, `Count=0` when nothing is cached.
+
+### `GET /v1/rainmeter/:providerId`
+
+Flat `key=value` text for one provider, with unprefixed keys.
+
+- **200 OK** — `text/plain; charset=utf-8`. A known provider with no cached snapshot answers with the same keys and empty values, so a widget's expression keeps matching.
 - **404 Not Found** — Provider ID is unknown.
 
 ### Unsupported methods
@@ -81,6 +98,8 @@ Access-Control-Allow-Headers: Content-Type
 ```
 
 `OPTIONS` requests return **204 No Content** with these headers for preflight support.
+
+The open origin is deliberate: widgets and local pages that read this API run under origins the app cannot know ahead of time. The loopback bind is the boundary, since any program running on this machine could read the same numbers directly from the app. Responses carry usage totals only, no tokens or credentials.
 
 ## Error Responses
 
