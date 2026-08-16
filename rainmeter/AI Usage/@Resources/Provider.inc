@@ -85,13 +85,22 @@ Measure=Calc
 Formula=Floor(([MeasureResetsInSec] % 3600) / 60)
 DynamicVariables=1
 
+; The box grows with the content instead of clipping it: the reset row is the
+; lowest one, the label row is the fallback when it is hidden, and the two rows
+; share a font size, so the larger of the two row bottoms wins.
+[MeasureBackgroundHeight]
+Measure=Calc
+Formula=Max([MeterLabel:Y]+[MeterLabel:H],[MeterReset:Y]+[MeterReset:H])+#BottomPadding#
+DynamicVariables=1
+
 ; ---------------------------------------------------------------------------
 ; Meters
 ; ---------------------------------------------------------------------------
 
 [MeterBackground]
 Meter=Shape
-Shape=Rectangle 0,0,#SkinWidth#,76,6 | Fill Color #BackgroundColor# | StrokeWidth 0
+Shape=Rectangle 0,0,#SkinWidth#,[MeasureBackgroundHeight],6 | Fill Color #BackgroundColor# | StrokeWidth 0
+DynamicVariables=1
 
 [MeterProviderName]
 Meter=String

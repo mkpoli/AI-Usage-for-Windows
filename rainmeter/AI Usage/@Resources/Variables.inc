@@ -12,6 +12,7 @@ SkinWidth=210
 Padding=10
 BarWidth=190
 BarHeight=6
+BottomPadding=8
 
 ; Colours, as R,G,B,A
 TitleColor=235,235,235,255
