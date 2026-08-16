@@ -45,10 +45,6 @@ Measure=WebParser
 URL=[MeasureUsage]
 StringIndex=12
 Substitute="":"0"
-; Nothing to count down to.
-IfMatch=^0$
-IfMatchAction=[!HideMeter MeterReset][!Redraw]
-IfNotMatchAction=[!ShowMeter MeterReset][!Redraw]
 
 ; No answer at all leaves this empty, which separates a closed app from a
 ; provider the app knows but has not measured yet.
@@ -66,8 +62,10 @@ IfCondition=(MeasureState < 0)
 IfTrueAction=[!ShowMeter MeterOffline][!HideMeter MeterWaiting][!HideMeterGroup Live][!Redraw]
 IfCondition2=(MeasureState = 0)
 IfTrueAction2=[!HideMeter MeterOffline][!ShowMeter MeterWaiting][!HideMeterGroup Live][!Redraw]
-IfCondition3=(MeasureState > 0)
-IfTrueAction3=[!HideMeter MeterOffline][!HideMeter MeterWaiting][!ShowMeterGroup Live][!Redraw]
+IfCondition3=(MeasureState > 0) && ([MeasureResetsInSec] > 0)
+IfTrueAction3=[!HideMeter MeterOffline][!HideMeter MeterWaiting][!ShowMeterGroup Live][!ShowMeter MeterReset][!Redraw]
+IfCondition4=(MeasureState > 0) && ([MeasureResetsInSec] = 0)
+IfTrueAction4=[!HideMeter MeterOffline][!HideMeter MeterWaiting][!ShowMeterGroup Live][!HideMeter MeterReset][!Redraw]
 
 ; WebParser hands over strings; a Bar meter needs a number.
 [MeasurePercentValue]
