@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.6.3 - 2026-08-16
 
 ### Added
 
@@ -13,6 +13,12 @@
 ### Changed
 
 - The local HTTP API is switched on in Settings instead of through the `AI_USAGE_ENABLE_LOCAL_HTTP_API` environment variable. It stays off by default.
+
+### Fixed
+
+- The Rainmeter widget shows the reset countdown only when the limit actually resets, and keeps it hidden for providers without one.
+
+- The Rainmeter widget box grows with its content, so the countdown line stays inside the black box with a small bottom margin instead of overflowing below it.
 
 ## v0.6.2 - 2026-08-15
 
