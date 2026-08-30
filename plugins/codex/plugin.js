@@ -272,6 +272,23 @@
     return Number.isFinite(n) ? n : null
   }
 
+  // A balance arrives as a string or a number, and blank in either shape means
+  // the field carries nothing: Number("") and Number(null) are both 0, which
+  // would read as a spent balance.
+  function readBalance(value) {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null
+    if (typeof value === "string" && value.trim() !== "") return readNumber(value)
+    return null
+  }
+
+  // Balances run fractional (5.39) and whole (500). Fractional ones show two
+  // places, whole ones none.
+  function formatCredits(value) {
+    const rounded = Math.round(value * 100) / 100
+    const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2)
+    return text + (rounded === 1 ? " credit" : " credits")
+  }
+
   function formatCodexPlan(ctx, planType) {
     const rawPlan = typeof planType === "string" ? planType.trim() : ""
     if (!rawPlan) return null
@@ -594,19 +611,22 @@
         }
       }
 
-      const creditsBalance = resp.headers["x-codex-credits-balance"]
-      const creditsHeader = readNumber(creditsBalance)
-      const creditsData = data.credits ? readNumber(data.credits.balance) : null
+      // Purchased credits arrive as a remaining balance with no grant total,
+      // so there is no denominator for a bar. An account that never bought
+      // credits reports has_credits false with a zero balance and gets no line;
+      // one that spent its balance keeps the line at zero, and an overage
+      // carries the negative through.
+      const credits = data.credits && typeof data.credits === "object" ? data.credits : null
+      const creditsHeader = readBalance(resp.headers["x-codex-credits-balance"])
+      const creditsData = credits ? readBalance(credits.balance) : null
       const creditsRemaining = creditsHeader ?? creditsData
-      if (creditsRemaining !== null) {
-        const remaining = creditsRemaining
-        const limit = 1000
-        const used = Math.max(0, Math.min(limit, limit - remaining))
-        lines.push(ctx.line.progress({
+      const hasCredits = credits ? credits.has_credits === true : false
+      if (credits && credits.unlimited === true) {
+        lines.push(ctx.line.text({ label: "Credits", value: "Unlimited" }))
+      } else if (creditsRemaining !== null && (creditsRemaining > 0 || hasCredits)) {
+        lines.push(ctx.line.text({
           label: "Credits",
-          used: used,
-          limit: limit,
-          format: { kind: "count", suffix: "credits" },
+          value: formatCredits(creditsRemaining),
         }))
       }
 

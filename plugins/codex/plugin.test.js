@@ -192,7 +192,8 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
-    expect(credits.used).toBe(900)
+    expect(credits.type).toBe("text")
+    expect(credits.value).toBe("100 credits")
   })
 
   it("maps prolite plan to Pro 5x", async () => {
@@ -224,7 +225,8 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
-    expect(credits.used).toBe(900)
+    expect(credits.type).toBe("text")
+    expect(credits.value).toBe("100 credits")
   })
 
   it("refreshes keychain auth and writes back to keychain", async () => {
@@ -653,7 +655,166 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Reviews")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
-    expect(credits.used).toBe(500)
+    expect(credits.type).toBe("text")
+    expect(credits.value).toBe("500 credits")
+  })
+
+  it("keeps the fractional part of a credit balance", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+        credits: { has_credits: true, unlimited: false, balance: "5.39" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const credits = result.lines.find((line) => line.label === "Credits")
+    expect(credits.value).toBe("5.39 credits")
+  })
+
+  it("reports an unlimited credit balance as unlimited", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+        credits: { has_credits: true, unlimited: true, balance: 0 },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const credits = result.lines.find((line) => line.label === "Credits")
+    expect(credits.value).toBe("Unlimited")
+  })
+
+  it("keeps the line at zero once a purchased balance is spent", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+        credits: { has_credits: true, unlimited: false, balance: 0 },
+      }),
+    })
+    const plugin = await loadPlugin()
+    expect(plugin.probe(ctx).lines.find((line) => line.label === "Credits").value)
+      .toBe("0 credits")
+  })
+
+  it("omits the line on an account that never purchased credits", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    // The shape a Pro account without credits actually answers with.
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+          secondary_window: { used_percent: 20, reset_after_seconds: 120 },
+        },
+        credits: {
+          has_credits: false,
+          unlimited: false,
+          overage_limit_reached: false,
+          balance: "0",
+          approx_local_messages: [0, 0],
+          approx_cloud_messages: [0, 0],
+        },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Credits")).toBeUndefined()
+  })
+
+  it("omits the line when only a zero header reports credits", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-credits-balance": "0" },
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+      }),
+    })
+    const plugin = await loadPlugin()
+    expect(plugin.probe(ctx).lines.find((line) => line.label === "Credits")).toBeUndefined()
+  })
+
+  it("reads the body balance when the header is blank", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-credits-balance": "" },
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+        credits: { has_credits: true, unlimited: false, balance: "5.39" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    expect(plugin.probe(ctx).lines.find((line) => line.label === "Credits").value)
+      .toBe("5.39 credits")
+  })
+
+  it("says credit in the singular", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+        credits: { has_credits: true, unlimited: false, balance: 1 },
+      }),
+    })
+    const plugin = await loadPlugin()
+    expect(plugin.probe(ctx).lines.find((line) => line.label === "Credits").value)
+      .toBe("1 credit")
   })
 
   it("omits resetsAt when window lacks reset info", async () => {
