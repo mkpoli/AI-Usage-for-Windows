@@ -63,7 +63,7 @@ Returns rate limit windows and optional credits.
 
 Both rate_limit windows are enforced simultaneously — hitting either limit throttles the user.
 
-`credits.balance` is what remains, and the response carries no grant total, so the Credits line reads as a balance and not as a proportion of anything. An account that never purchased credits answers `has_credits: false` with a zero balance and gets no line at all.
+`credits.balance` is what remains, and the response carries no grant total. It arrives as a string or a number. An account that never purchased credits answers `has_credits: false` with a zero balance and gets no line.
 
 ## Authentication
 

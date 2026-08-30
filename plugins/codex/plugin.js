@@ -272,12 +272,21 @@
     return Number.isFinite(n) ? n : null
   }
 
-  // Balances arrive fractional (5.39) and whole (500) alike. Whole numbers read
-  // as counts, fractional ones keep the two places the balance is spent in.
+  // A balance arrives as a string or a number, and blank in either shape means
+  // the field carries nothing: Number("") and Number(null) are both 0, which
+  // would read as a spent balance.
+  function readBalance(value) {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null
+    if (typeof value === "string" && value.trim() !== "") return readNumber(value)
+    return null
+  }
+
+  // Balances run fractional (5.39) and whole (500). Fractional ones show two
+  // places, whole ones none.
   function formatCredits(value) {
     const rounded = Math.round(value * 100) / 100
     const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2)
-    return text + " credits"
+    return text + (rounded === 1 ? " credit" : " credits")
   }
 
   function formatCodexPlan(ctx, planType) {
@@ -602,23 +611,23 @@
         }
       }
 
-      // The API reports purchased credits as a remaining balance and never a
-      // grant total, so there is no denominator to draw a bar against. A text
-      // line states the balance itself.
+      // Purchased credits arrive as a remaining balance with no grant total,
+      // so there is no denominator for a bar. An account that never bought
+      // credits reports has_credits false with a zero balance and gets no line;
+      // one that spent its balance keeps the line at zero, and an overage
+      // carries the negative through.
       const credits = data.credits && typeof data.credits === "object" ? data.credits : null
-      const creditsBalance = resp.headers["x-codex-credits-balance"]
-      const creditsHeader = readNumber(creditsBalance)
-      const creditsData = credits ? readNumber(credits.balance) : null
+      const creditsHeader = readBalance(resp.headers["x-codex-credits-balance"])
+      const creditsData = credits ? readBalance(credits.balance) : null
       const creditsRemaining = creditsHeader ?? creditsData
+      const hasCredits = credits ? credits.has_credits === true : false
       if (credits && credits.unlimited === true) {
         lines.push(ctx.line.text({ label: "Credits", value: "Unlimited" }))
-      } else if (creditsRemaining !== null && creditsRemaining > 0) {
+      } else if (creditsRemaining !== null && (creditsRemaining > 0 || hasCredits)) {
         lines.push(ctx.line.text({
           label: "Credits",
           value: formatCredits(creditsRemaining),
         }))
-      } else if (creditsRemaining !== null && credits && credits.has_credits === true) {
-        lines.push(ctx.line.text({ label: "Credits", value: formatCredits(0) }))
       }
 
       let plan = null
