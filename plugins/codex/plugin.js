@@ -272,6 +272,14 @@
     return Number.isFinite(n) ? n : null
   }
 
+  // Balances arrive fractional (5.39) and whole (500) alike. Whole numbers read
+  // as counts, fractional ones keep the two places the balance is spent in.
+  function formatCredits(value) {
+    const rounded = Math.round(value * 100) / 100
+    const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2)
+    return text + " credits"
+  }
+
   function formatCodexPlan(ctx, planType) {
     const rawPlan = typeof planType === "string" ? planType.trim() : ""
     if (!rawPlan) return null
@@ -594,20 +602,23 @@
         }
       }
 
+      // The API reports purchased credits as a remaining balance and never a
+      // grant total, so there is no denominator to draw a bar against. A text
+      // line states the balance itself.
+      const credits = data.credits && typeof data.credits === "object" ? data.credits : null
       const creditsBalance = resp.headers["x-codex-credits-balance"]
       const creditsHeader = readNumber(creditsBalance)
-      const creditsData = data.credits ? readNumber(data.credits.balance) : null
+      const creditsData = credits ? readNumber(credits.balance) : null
       const creditsRemaining = creditsHeader ?? creditsData
-      if (creditsRemaining !== null) {
-        const remaining = creditsRemaining
-        const limit = 1000
-        const used = Math.max(0, Math.min(limit, limit - remaining))
-        lines.push(ctx.line.progress({
+      if (credits && credits.unlimited === true) {
+        lines.push(ctx.line.text({ label: "Credits", value: "Unlimited" }))
+      } else if (creditsRemaining !== null && creditsRemaining > 0) {
+        lines.push(ctx.line.text({
           label: "Credits",
-          used: used,
-          limit: limit,
-          format: { kind: "count", suffix: "credits" },
+          value: formatCredits(creditsRemaining),
         }))
+      } else if (creditsRemaining !== null && credits && credits.has_credits === true) {
+        lines.push(ctx.line.text({ label: "Credits", value: formatCredits(0) }))
       }
 
       let plan = null

@@ -192,7 +192,8 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
-    expect(credits.used).toBe(900)
+    expect(credits.type).toBe("text")
+    expect(credits.value).toBe("100 credits")
   })
 
   it("maps prolite plan to Pro 5x", async () => {
@@ -224,7 +225,8 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
-    expect(credits.used).toBe(900)
+    expect(credits.type).toBe("text")
+    expect(credits.value).toBe("100 credits")
   })
 
   it("refreshes keychain auth and writes back to keychain", async () => {
@@ -653,7 +655,90 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Reviews")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
-    expect(credits.used).toBe(500)
+    expect(credits.type).toBe("text")
+    expect(credits.value).toBe("500 credits")
+  })
+
+  it("keeps the fractional part of a credit balance", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+        credits: { has_credits: true, unlimited: false, balance: 5.39 },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const credits = result.lines.find((line) => line.label === "Credits")
+    expect(credits.value).toBe("5.39 credits")
+  })
+
+  it("reports an unlimited credit balance as unlimited", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+        credits: { has_credits: true, unlimited: true, balance: 0 },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const credits = result.lines.find((line) => line.label === "Credits")
+    expect(credits.value).toBe("Unlimited")
+  })
+
+  it("shows a spent credit balance and omits the line on an account with none", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+        credits: { has_credits: true, unlimited: false, balance: 0 },
+      }),
+    })
+    const plugin = await loadPlugin()
+    expect(plugin.probe(ctx).lines.find((line) => line.label === "Credits").value)
+      .toBe("0 credits")
+
+    const bare = makeCtx()
+    bare.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    bare.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-credits-balance": "0" },
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 10, reset_after_seconds: 60 },
+        },
+      }),
+    })
+    const plugin2 = await loadPlugin()
+    expect(plugin2.probe(bare).lines.find((line) => line.label === "Credits")).toBeUndefined()
   })
 
   it("omits resetsAt when window lacks reset info", async () => {

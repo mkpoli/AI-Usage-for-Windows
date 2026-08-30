@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The Codex Credits line states the balance the account has left instead of drawing it against a 1000-credit limit the API never reports. An account with no purchased credits was reading `1000/1000 credits` beside an idle session, and a balance of 5.39 read as 99% spent. An unlimited balance says so, and an account that never bought credits gets no line.
+
 ## v0.6.3 - 2026-08-16
 
 ### Added
