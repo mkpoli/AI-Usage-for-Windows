@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Qwen reads Token Plans whose usage window is monthly. The usage endpoint returns `per1MonthPercentage` for those accounts, which the five-hour and weekly check skipped, so a live plan showed "No active plan" beside a console that listed its start date and remaining days. The monthly window and its `monthly` allowance now render, the subscription record alone is enough to count as a Token Plan, and the renewal line uses the remaining-days figure the console reports instead of recomputing from the end timestamp.
+
 - The Codex Credits line states the balance the account has left instead of drawing it against a 1000-credit limit the API never reports. An account with no purchased credits was reading `1000/1000 credits` beside an idle session, and a balance of 5.39 read as 99% spent. An unlimited balance says so, and an account that never bought credits gets no line. On the local HTTP API that line is now `"type": "text"` with a `value`, where it used to carry `used` and `limit`.
 
 ## v0.6.3 - 2026-08-16

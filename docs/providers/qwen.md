@@ -2,7 +2,7 @@
 
 Tracks Alibaba Qwen subscription usage from the Qwen Cloud console.
 
-Two subscriptions are covered. **Token Plan** reports a five-hour and a weekly window as percentages. **Coding Plan** reports five-hour, weekly, and billing-month request counts. The Token Plan is read first; the Coding Plan is used when no Token Plan is active.
+Two subscriptions are covered. **Token Plan** reports the windows the subscribed spec meters — five-hour, weekly, and monthly — as percentages. **Coding Plan** reports five-hour, weekly, and billing-month request counts. The active Token Plan is read first; the Coding Plan is used when the Token Plan is absent or expired.
 
 ## Regions
 
@@ -94,7 +94,7 @@ The console and the data gateway are different hosts.
 
 - **Request:** `POST {gateway}/data/api.json`, form-encoded, product `sfm_bailian`. The `params` field carries `Api`, `Data`, and `V: "1.0"`, and `Data` must include a `cornerstoneParam` block identifying the console site.
 - **CSRF token:** the gateway requires a `sec_token`. It is rendered into the console page as `ALIYUN_CONSOLE_CONFIG.SEC_TOKEN`, so AI Usage reads it from the billing page using the same cookies. Setting `qwen.secToken` skips that request.
-- **Token Plan:** `zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage` supplies `per5HourPercentage` and `per1WeekPercentage` with their reset timestamps; `/subscription` supplies the spec and renewal; `/quota-config` supplies the per-spec allowance.
+- **Token Plan:** `zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage` supplies `per5HourPercentage`, `per1WeekPercentage`, and `per1MonthPercentage` with their reset timestamps, whichever the spec meters; `/subscription` supplies the spec and renewal; `/quota-config` supplies the per-spec allowance as `five_hour`, `weekly`, and `monthly`.
 - **Coding Plan:** `zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2` supplies `codingPlanQuotaInfo` with used and total request counts per window.
 
 These are console endpoints rather than a published API, so they can change without notice.
@@ -105,12 +105,12 @@ These are console endpoints rather than a published API, so they can change with
 |---|---|---|---|
 | `5-hour` | Percent of the five-hour window | Requests used of the five-hour quota | Overview |
 | `Weekly` | Percent of the weekly window | Requests used of the weekly quota | Overview |
-| `Monthly` | — | Requests used of the billing-month quota | Overview |
+| `Monthly` | Percent of the monthly window | Requests used of the billing-month quota | Overview |
 | `Allowance` | Requests per window for the subscribed spec | — | Detail |
 | `Status` | Shown when the subscription is not `VALID` | Shown when the subscription is not `VALID` | Detail |
 | `Renewal` | Days until the plan renews or ends | Days until the plan renews or ends | Detail |
 
-The plan label reads `Token Plan Standard` or, for a Coding Plan, the instance name and price such as `Pro 39`.
+A window the spec does not meter is omitted, so a monthly-metered Token Plan shows `Monthly` and no `Weekly`. The plan label reads `Token Plan Standard` or, for a Coding Plan, the instance name and price such as `Pro 39`.
 
 ## Limitations
 

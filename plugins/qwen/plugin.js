@@ -13,6 +13,22 @@
   const TOKEN_PLAN_QUOTA_API = "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/quota-config"
   const CODING_PLAN_API = "zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2"
 
+  // Token Plan usage carries a percentage for each window the subscribed spec
+  // meters. Specs have shipped a weekly window and later a monthly one; the
+  // response only includes the fields that apply to the account.
+  const TOKEN_PLAN_WINDOWS = [
+    { label: "5-hour", percentKey: "per5HourPercentage", resetKey: "per5HourResetTime", periodDurationMs: FIVE_HOUR_MS },
+    { label: "Weekly", percentKey: "per1WeekPercentage", resetKey: "per1WeekResetTime", periodDurationMs: WEEK_MS },
+    { label: "Monthly", percentKey: "per1MonthPercentage", resetKey: "per1MonthResetTime", periodDurationMs: MONTH_MS },
+  ]
+
+  // Matching keys under quota-config, one per window the spec can carry.
+  const TOKEN_PLAN_QUOTA_KEYS = [
+    { key: "five_hour", suffix: " / 5h" },
+    { key: "weekly", suffix: " / week" },
+    { key: "monthly", suffix: " / month" },
+  ]
+
   // Qwen Cloud runs one deployment per region. The console and the data gateway
   // are separate hosts, and each region has its own gateway action and site tag.
   const REGIONS = {
@@ -332,8 +348,9 @@
   }
 
   function formatRenewal(ctx, sub, nowMs) {
+    const remaining = readNumber(sub.remainingDays)
     const endMs = ctx.util.parseDateMs(sub.endTime)
-    const days = endMs === null ? readNumber(sub.remainingDays) : Math.ceil((endMs - nowMs) / DAY_MS)
+    const days = remaining !== null ? remaining : endMs === null ? null : Math.ceil((endMs - nowMs) / DAY_MS)
     if (days === null) return null
 
     const verb = sub.autoRenewFlag ? "Renews" : "Ends"
@@ -343,32 +360,44 @@
   }
 
   function buildTokenPlan(ctx, endpoint, cookieHeader, secToken) {
-    const usage = safeCall(ctx, endpoint, cookieHeader, secToken, TOKEN_PLAN_USAGE_API, {})
-    if (!usage) return null
-
-    const hasWindow =
-      readNumber(usage.per5HourPercentage) !== null || readNumber(usage.per1WeekPercentage) !== null
-    if (!hasWindow) return null
-
+    const usage = safeCall(ctx, endpoint, cookieHeader, secToken, TOKEN_PLAN_USAGE_API, {}) || {}
     const sub = safeCall(ctx, endpoint, cookieHeader, secToken, TOKEN_PLAN_SUBSCRIPTION_API, {}) || {}
     const quotas = safeCall(ctx, endpoint, cookieHeader, secToken, TOKEN_PLAN_QUOTA_API, {}) || {}
 
+    // A subscription record is enough to call this a Token Plan: a monthly-
+    // metered spec answers with `per1MonthPercentage` alone, and a fresh
+    // account can answer with no window percentages at all.
+    const hasWindow = TOKEN_PLAN_WINDOWS.some(function (window) {
+      return readNumber(usage[window.percentKey]) !== null
+    })
+    const hasSubscription =
+      readString(sub.instanceCode) !== null ||
+      readString(sub.specCode) !== null ||
+      readString(sub.status) !== null ||
+      readNumber(sub.remainingDays) !== null ||
+      ctx.util.parseDateMs(sub.endTime) !== null
+    if (!hasWindow && !hasSubscription) return null
+
     const lines = []
-    addPercentLine(lines, ctx, "5-hour", usage.per5HourPercentage, usage.per5HourResetTime, FIVE_HOUR_MS)
-    addPercentLine(lines, ctx, "Weekly", usage.per1WeekPercentage, usage.per1WeekResetTime, WEEK_MS)
+    for (let i = 0; i < TOKEN_PLAN_WINDOWS.length; i += 1) {
+      const window = TOKEN_PLAN_WINDOWS[i]
+      addPercentLine(lines, ctx, window.label, usage[window.percentKey], usage[window.resetKey], window.periodDurationMs)
+    }
 
     const spec = readString(sub.specCode)
     const specQuota = spec && quotas[spec] && typeof quotas[spec] === "object" ? quotas[spec] : null
     if (specQuota) {
-      const fiveHour = readNumber(specQuota.five_hour)
-      const weekly = readNumber(specQuota.weekly)
       const parts = []
-      if (fiveHour !== null) parts.push(fiveHour + " / 5h")
-      if (weekly !== null) parts.push(weekly + " / week")
+      for (let i = 0; i < TOKEN_PLAN_QUOTA_KEYS.length; i += 1) {
+        const entry = TOKEN_PLAN_QUOTA_KEYS[i]
+        const allowance = readNumber(specQuota[entry.key])
+        if (allowance !== null) parts.push(allowance + entry.suffix)
+      }
       if (parts.length) lines.push(ctx.line.text({ label: "Allowance", value: parts.join(" · ") }))
     }
 
-    if (readString(sub.status) && String(sub.status).toUpperCase() !== "VALID") {
+    const expired = !!(readString(sub.status) && String(sub.status).toUpperCase() !== "VALID")
+    if (expired) {
       lines.unshift(ctx.line.badge({ label: "Status", text: "Expired", color: "#ef4444" }))
     }
 
@@ -378,7 +407,7 @@
     const planParts = ["Token Plan"]
     const specLabel = titleCase(spec)
     if (specLabel) planParts.push(specLabel)
-    return { plan: planParts.join(" "), lines }
+    return { plan: planParts.join(" "), lines, active: !expired }
   }
 
   function buildCodingPlan(ctx, endpoint, cookieHeader, secToken) {
@@ -404,7 +433,8 @@
     addCountLine(lines, ctx, "Weekly", quota, "perWeek", WEEK_MS)
     addCountLine(lines, ctx, "Monthly", quota, "perBillMonth", MONTH_MS)
 
-    if (readString(instance.status) && String(instance.status).toUpperCase() !== "VALID") {
+    const expired = !!(readString(instance.status) && String(instance.status).toUpperCase() !== "VALID")
+    if (expired) {
       lines.unshift(ctx.line.badge({ label: "Status", text: "Expired", color: "#ef4444" }))
     }
 
@@ -418,7 +448,7 @@
     const name = readString(instance.instanceName)
     const amount = readNumber(instance.chargeAmount)
     const plan = name ? (amount !== null && amount > 0 ? name + " " + String(amount) : name) : null
-    return { plan: plan || "Coding Plan", lines }
+    return { plan: plan || "Coding Plan", lines, active: !expired }
   }
 
   function addCountLine(lines, ctx, label, quota, prefix, periodDurationMs) {
@@ -453,16 +483,24 @@
 
     const secToken = readString(config.secToken) || fetchSecToken(ctx, endpoint, cookieHeader)
 
-    const result =
-      buildTokenPlan(ctx, endpoint, cookieHeader, secToken) ||
-      buildCodingPlan(ctx, endpoint, cookieHeader, secToken)
+    // Prefer whichever subscription is currently active. An expired Token Plan
+    // is still shown when the account holds nothing else.
+    const tokenPlan = buildTokenPlan(ctx, endpoint, cookieHeader, secToken)
+    if (tokenPlan && tokenPlan.active) return present(tokenPlan)
 
+    const codingPlan = buildCodingPlan(ctx, endpoint, cookieHeader, secToken)
+    if (codingPlan && codingPlan.active) return present(codingPlan)
+
+    const result = tokenPlan || codingPlan
     if (!result) {
       return {
         lines: [ctx.line.badge({ label: "Status", text: "No active plan", color: "#a3a3a3" })],
       }
     }
+    return present(result)
+  }
 
+  function present(result) {
     if (!result.lines.length) {
       result.lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
