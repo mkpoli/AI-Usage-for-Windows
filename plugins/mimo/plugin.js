@@ -271,7 +271,12 @@
     const autoRenew = readBoolean(detail.autoRenew)
     const verb = autoRenew === false ? "Ends" : "Renews"
 
-    if (days <= 0) return verb === "Renews" ? "Renews today" : "Ends today"
+    if (days < 0) {
+      const ago = -days
+      const unit = ago === 1 ? " day ago" : " days ago"
+      return (verb === "Renews" ? "Renewed " : "Ended ") + ago + unit
+    }
+    if (days === 0) return verb === "Renews" ? "Renews today" : "Ends today"
     if (days === 1) return verb + " tomorrow"
     return verb + " in " + days + " days"
   }
@@ -374,10 +379,12 @@
     // Compensation is a separate grant with no reset the console publishes, so
     // it carries no countdown. A zero-size grant draws no bar.
     const bonusCounts = itemUsedLimit(bonusItem)
+    const bonusPercent = toPercent(bonusItem && bonusItem.percent)
     const bonusHasGrant =
       bonusItem &&
       ((bonusCounts.limit !== null && bonusCounts.limit > 0) ||
-        (bonusCounts.used !== null && bonusCounts.used > 0))
+        (bonusCounts.used !== null && bonusCounts.used > 0) ||
+        (bonusPercent !== null && bonusPercent > 0))
     if (bonusHasGrant) {
       const bonusLine = percentLine(ctx, "Bonus", bonusItem, null, null)
       if (bonusLine) lines.push(bonusLine)

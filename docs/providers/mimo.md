@@ -68,7 +68,7 @@ AI Usage reads these variables from the process environment or the persisted Win
 
 1. `MIMO_COOKIE` (environment)
 2. `MIMO_SESSION_COOKIE` (environment)
-3. `~/.ai-usage/config.json` → `mimo.cookie` / `mimo.sessionCookie`
+3. `~/.ai-usage/config.json` → `mimo.cookie` / `mimo.sessionCookie` / `mimo.session_cookie`
 
 ## Endpoints
 

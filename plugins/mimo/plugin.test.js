@@ -339,6 +339,43 @@ describe("mimo plugin", () => {
     expect(result.lines.find((l) => l.label === "Bonus")).toBeUndefined()
   })
 
+  it("draws the bonus bar from a percent-only grant", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, {
+      usage: {
+        usage: {
+          percent: 0.4,
+          items: [
+            { name: "plan_total_token", used: 1, limit: 10, percent: 0.1 },
+            { name: "compensation_total_token", percent: 0.2 },
+          ],
+        },
+        monthUsage: { percent: 0.1, items: [{ name: "month_total_token", percent: 0.1 }] },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Bonus")).toMatchObject({ used: 20, limit: 100 })
+  })
+
+  it("dates a renewal that already passed", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, {
+      detail: {
+        ...DETAIL,
+        currentPeriodEnd: new Date(NOW - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        enableAutoRenew: false,
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Renewal").value).toBe("Ended 3 days ago")
+  })
+
   it("still reports usage when the detail call fails", async () => {
     const ctx = makeCtx()
     mockCookie(ctx)
