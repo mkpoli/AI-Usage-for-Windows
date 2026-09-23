@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "mimo",
+  "name": "MiMo",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#FF6B35",
+  "pricingUrl": "https://platform.xiaomimimo.com/token-plan",
+  "links": [
+    {
+      "label": "Token Plan",
+      "url": "https://platform.xiaomimimo.com/token-plan"
+    },
+    {
+      "label": "Console",
+      "url": "https://platform.xiaomimimo.com/console/plan-manage"
+    }
+  ],
+  "lines": [
+    {
+      "type": "progress",
+      "label": "Monthly",
+      "scope": "overview",
+      "primaryOrder": 1
+    },
+    {
+      "type": "progress",
+      "label": "Plan",
+      "scope": "overview",
+      "primaryOrder": 2,
+      "gating": true
+    },
+    {
+      "type": "progress",
+      "label": "Bonus",
+      "scope": "detail"
+    },
+    {
+      "type": "text",
+      "label": "Tokens",
+      "scope": "detail"
+    },
+    {
+      "type": "badge",
+      "label": "Status",
+      "scope": "detail"
+    },
+    {
+      "type": "text",
+      "label": "Renewal",
+      "scope": "detail"
+    }
+  ]
+}

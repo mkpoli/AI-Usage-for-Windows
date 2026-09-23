@@ -17,7 +17,7 @@ so nothing is sent off the machine and no credentials pass through Rainmeter.
 
 Each provider is a separate skin, so you can load only the ones you care about
 and drag each where you want it. Skins exist for Claude, Codex, Gemini,
-Antigravity, Cursor, Copilot, Grok, Sakana AI, Kimi, Qwen and Z.ai.
+Antigravity, Cursor, Copilot, Grok, Sakana AI, Kimi, MiMo, Qwen and Z.ai.
 
 ## What a skin shows
 
