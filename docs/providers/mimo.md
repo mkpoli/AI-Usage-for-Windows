@@ -19,7 +19,7 @@ The Token Plan meters a monthly window and a plan-wide token grant. A third buck
 2. Open DevTools (F12) → Network, and reload the page.
 3. Click any request to that host, and copy the full **Cookie** request header.
 
-The session is carried by `api-platform_serviceToken`, `userId`, `api-platform_slh`, and `api-platform_ph`. AI Usage sends those four when it can find them, and the whole header otherwise.
+The session is carried by `api-platform_serviceToken`, `userId`, `api-platform_slh`, and `api-platform_ph`. AI Usage sends the whole pasted header, so a cookie the platform adds later still goes through.
 
 Add the cookies to `~/.ai-usage/config.json` (on Windows: `C:\Users\<you>\.ai-usage\config.json`):
 
@@ -48,7 +48,7 @@ Accepted keys under `mimo`:
 
 | Key | Meaning |
 |---|---|
-| `cookie` | The console `Cookie` header. Also accepts `sessionCookie`. A DevTools Cookies-table paste works too. |
+| `cookie` | The console `Cookie` header. Also accepts `sessionCookie` and `session_cookie`. A DevTools Cookies-table paste works too. |
 
 ## Alternative: environment variables
 
@@ -115,7 +115,7 @@ Item names the plugin reads:
 | `compensation_total_token` | Bonus | Tokens granted outside the plan |
 | `month_total_token` | Monthly | Tokens used in the current monthly window |
 
-`percent` is a 0..1 fraction of the window consumed. A 0..100 value is accepted the same way. When an item omits `percent`, the plugin computes it from `used` / `limit`.
+`percent` is a 0..1 fraction of the window consumed. When an item omits `percent`, the plugin computes it from `used` / `limit`.
 
 ### GET /api/v1/tokenPlan/detail
 
@@ -150,19 +150,19 @@ Used fields:
 |---|---|---|
 | `Monthly` | `month_total_token` | Overview |
 | `Plan` | `plan_total_token` | Overview |
-| `Bonus` | `compensation_total_token`, when present | Detail |
+| `Bonus` | `compensation_total_token`, when the grant is non-empty | Detail |
 | `Tokens` | `plan_total_token` used and limit, abbreviated | Detail |
-| `Status` | Shown when the subscription is expired | Detail |
+| `Status` | Shown when the subscription is expired or no usage is available | Detail |
 | `Renewal` | Days until `currentPeriodEnd`, phrased as renews or ends | Detail |
 
-The plan label is the `planName` from the detail call.
+The plan label is the `planName` from the detail call. The Plan bar carries the countdown to `currentPeriodEnd`. The monthly window and the compensation grant publish no reset timestamp, so those bars show neither a countdown nor a pace marker.
 
 ## Limitations
 
 - The `tp-` Token Plan API key cannot read usage. The console endpoints accept session cookies only.
 - Cookies are not refreshed. When the console session expires, re-copy the header.
 - Per-model and token-level history is unavailable, matching what the console itself shows.
-- The monthly window carries no reset timestamp in the API, so the bar is drawn without a countdown.
+- The monthly window carries no reset timestamp in the API, so the bar is drawn without a countdown or a pace marker.
 
 ## Errors
 
@@ -170,6 +170,9 @@ The plan label is the `planName` from the detail call.
 |-------|---------|
 | `Missing MiMo credentials` | No cookies were found in the environment or `~/.ai-usage/config.json`. |
 | `MiMo login required` | The console session expired. Copy fresh cookies. |
-| `MiMo usage request failed` | The console returned a non-2xx response. |
+| `MiMo request failed` | The console returned a non-2xx response. |
 | `MiMo API error` | The console answered with a non-zero business code. |
-| `No usage data` | The account has no Token Plan subscription. |
+| `Request failed. Check your connection.` | The request never reached the console. |
+| `Usage response invalid. Try again later.` | The response was not JSON. |
+
+A card that answers with no Token Plan shows a `No usage data` status badge rather than an error.

@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
-const PLATFORM = "https://platform.xiaomimimo.com"
-const USAGE_URL = PLATFORM + "/api/v1/tokenPlan/usage"
-const DETAIL_URL = PLATFORM + "/api/v1/tokenPlan/detail"
-
 const NOW = Date.parse("2026-09-23T00:00:00.000Z")
 const PERIOD_END = NOW + 18 * 24 * 60 * 60 * 1000
 
@@ -86,13 +82,31 @@ describe("mimo plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Missing MiMo credentials")
   })
 
-  it("reads cookies from the config file", async () => {
+  it("prefers the environment cookie over the config file", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(
+      "~/.ai-usage/config.json",
+      JSON.stringify({ mimo: { cookie: "api-platform_serviceToken=from-config" } })
+    )
+    mockCookie(ctx, "api-platform_serviceToken=from-env; userId=1")
+    mockApi(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const usageCall = ctx.host.http.request.mock.calls
+      .map((c) => c[0])
+      .find((o) => String(o.url).indexOf("/tokenPlan/usage") !== -1)
+    expect(usageCall.headers.Cookie).toBe("api-platform_serviceToken=from-env; userId=1")
+  })
+
+  it("reads cookies from the config file, including the session_cookie alias", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText(
       "~/.ai-usage/config.json",
       JSON.stringify({
         mimo: {
-          cookie: "Cookie: api-platform_serviceToken=cfg; userId=7; api-platform_slh=a; api-platform_ph=b",
+          session_cookie: "Cookie: api-platform_serviceToken=cfg; userId=7; api-platform_slh=a; api-platform_ph=b",
         },
       })
     )
@@ -119,13 +133,16 @@ describe("mimo plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Pro")
+    // No reset timestamp is published for the monthly window, so the bar is
+    // drawn without a countdown or a pace marker.
     expect(result.lines.find((l) => l.label === "Monthly")).toMatchObject({
       type: "progress",
       used: 25,
       limit: 100,
       format: { kind: "percent" },
-      periodDurationMs: 30 * 24 * 60 * 60 * 1000,
     })
+    expect(result.lines.find((l) => l.label === "Monthly").resetsAt).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Monthly").periodDurationMs).toBeUndefined()
     expect(result.lines.find((l) => l.label === "Plan")).toMatchObject({
       type: "progress",
       used: 42.7,
@@ -138,6 +155,8 @@ describe("mimo plugin", () => {
       used: 20,
       limit: 100,
     })
+    // Compensation is its own grant, so it carries no plan-period countdown.
+    expect(result.lines.find((l) => l.label === "Bonus").resetsAt).toBeUndefined()
     expect(result.lines.find((l) => l.label === "Tokens")).toEqual({
       type: "text",
       label: "Tokens",
@@ -161,13 +180,13 @@ describe("mimo plugin", () => {
     expect(result.lines.find((l) => l.label === "Plan").used).toBe(25)
   })
 
-  it("accepts a 0-100 percent the same way as a 0-1 fraction", async () => {
+  it("reads percent as a 0..1 fraction", async () => {
     const ctx = makeCtx()
     mockCookie(ctx)
     mockApi(ctx, {
       usage: {
-        usage: { items: [{ name: "plan_total_token", percent: 42.7 }] },
-        monthUsage: { items: [{ name: "month_total_token", percent: 25 }] },
+        usage: { items: [{ name: "plan_total_token", percent: 0.427 }] },
+        monthUsage: { items: [{ name: "month_total_token", percent: 0.25 }] },
       },
     })
 
@@ -175,6 +194,24 @@ describe("mimo plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.find((l) => l.label === "Monthly").used).toBe(25)
     expect(result.lines.find((l) => l.label === "Plan").used).toBe(42.7)
+  })
+
+  it("ignores a month bucket that is not month_total_token", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, {
+      usage: {
+        usage: { items: [{ name: "plan_total_token", percent: 0.4 }] },
+        monthUsage: {
+          percent: 0.25,
+          items: [{ name: "some_other_bucket", used: 1, limit: 10, percent: 0.25 }],
+        },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Monthly")).toBeUndefined()
   })
 
   it("says Ends when auto renew is off", async () => {
@@ -215,6 +252,70 @@ describe("mimo plugin", () => {
     expect(result.lines.find((l) => l.label === "Monthly").used).toBe(25)
   })
 
+  it("does not invent a zero used count on the Tokens line", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, {
+      usage: {
+        usage: { items: [{ name: "plan_total_token", limit: 300000000, percent: 0.5 }] },
+        monthUsage: { items: [{ name: "month_total_token", percent: 0.25 }] },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Tokens").value).toBe("? / 300M")
+  })
+
+  it("does not read the mixed usage.percent as the Plan bar", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, {
+      usage: {
+        usage: {
+          percent: 0.42,
+          items: [{ name: "compensation_total_token", used: 1, limit: 10, percent: 0.1 }],
+        },
+        monthUsage: { items: [{ name: "month_total_token", percent: 0.25 }] },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Plan")).toBeUndefined()
+  })
+
+  it("falls back to planCode when planName is absent", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, { detail: { ...DETAIL, planName: null, planCode: "pro:monthly" } })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("pro:monthly")
+  })
+
+  it("hides the bonus bar for a zero-size grant", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, {
+      usage: {
+        usage: {
+          percent: 0.4,
+          items: [
+            { name: "plan_total_token", used: 1, limit: 10, percent: 0.1 },
+            { name: "compensation_total_token", used: 0, limit: 0, percent: 0 },
+          ],
+        },
+        monthUsage: { percent: 0.1, items: [{ name: "month_total_token", percent: 0.1 }] },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Bonus")).toBeUndefined()
+  })
+
   it("still reports usage when the detail call fails", async () => {
     const ctx = makeCtx()
     mockCookie(ctx)
@@ -245,7 +346,7 @@ describe("mimo plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("MiMo API error: quota exhausted")
   })
 
-  it("shows No usage data when the account has no plan", async () => {
+  it("shows one status badge when an expired account has no usage", async () => {
     const ctx = makeCtx()
     mockCookie(ctx)
     mockApi(ctx, {
@@ -255,9 +356,25 @@ describe("mimo plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines[0]).toMatchObject({ type: "badge", label: "Status", text: "Expired" })
-    expect(result.lines.find((l) => l.type === "badge" && l.text === "No usage data")).toBeTruthy()
+    const badges = result.lines.filter((l) => l.type === "badge")
+    expect(badges).toHaveLength(1)
+    expect(badges[0]).toMatchObject({ label: "Status", text: "Expired" })
     expect(result.lines.find((l) => l.label === "Monthly")).toBeUndefined()
     expect(result.lines.find((l) => l.label === "Plan")).toBeUndefined()
+  })
+
+  it("shows one status badge when the account has no plan", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, {
+      usage: { usage: { percent: 0, items: [] }, monthUsage: { percent: 0, items: [] } },
+      detail: { planName: null, expired: false, enableAutoRenew: false },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const badges = result.lines.filter((l) => l.type === "badge")
+    expect(badges).toHaveLength(1)
+    expect(badges[0]).toMatchObject({ label: "Status", text: "No usage data" })
   })
 })

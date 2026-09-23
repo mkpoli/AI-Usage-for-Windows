@@ -22,14 +22,14 @@
       "type": "progress",
       "label": "Monthly",
       "scope": "overview",
-      "primaryOrder": 1,
-      "gating": true
+      "primaryOrder": 1
     },
     {
       "type": "progress",
       "label": "Plan",
       "scope": "overview",
-      "primaryOrder": 2
+      "primaryOrder": 2,
+      "gating": true
     },
     {
       "type": "progress",

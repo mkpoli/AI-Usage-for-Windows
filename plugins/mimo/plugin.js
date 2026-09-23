@@ -5,17 +5,6 @@
   const DETAIL_URL = PLATFORM_URL + "/api/v1/tokenPlan/detail"
 
   const DAY_MS = 24 * 60 * 60 * 1000
-  const MONTH_MS = 30 * DAY_MS
-
-  // The console session is authenticated by four cookies. Sending only those
-  // keeps the header small and matches what the platform itself issues; any
-  // other pasted cookie is still forwarded when the known names are missing.
-  const REQUIRED_COOKIES = [
-    "api-platform_serviceToken",
-    "userId",
-    "api-platform_slh",
-    "api-platform_ph",
-  ]
 
   function readString(value) {
     if (typeof value !== "string") return null
@@ -127,29 +116,6 @@
       .join("; ")
   }
 
-  function parseCookiePairs(header) {
-    const byName = {}
-    const segments = String(header || "").split(";")
-    for (let i = 0; i < segments.length; i += 1) {
-      const segment = segments[i].trim()
-      if (!segment) continue
-      const eq = segment.indexOf("=")
-      if (eq <= 0) continue
-      byName[segment.slice(0, eq).trim()] = segment.slice(eq + 1).trim()
-    }
-    return byName
-  }
-
-  function narrowCookieHeader(header) {
-    const byName = parseCookiePairs(header)
-    const parts = []
-    for (let i = 0; i < REQUIRED_COOKIES.length; i += 1) {
-      const name = REQUIRED_COOKIES[i]
-      if (byName[name]) parts.push(name + "=" + byName[name])
-    }
-    return parts.length ? parts.join("; ") : header
-  }
-
   function loadCookieHeader(ctx, config) {
     const fromEnv = pickFirstString([
       readEnv(ctx, "MIMO_COOKIE"),
@@ -159,7 +125,7 @@
       const header = parseCookieInput(fromEnv)
       if (header) {
         ctx.host.log.info("cookie header loaded from environment")
-        return narrowCookieHeader(header)
+        return header
       }
     }
 
@@ -168,7 +134,7 @@
       const header = parseCookieInput(fromConfig)
       if (header) {
         ctx.host.log.info("cookie header loaded from " + CONFIG_PATH)
-        return narrowCookieHeader(header)
+        return header
       }
     }
 
@@ -196,7 +162,6 @@
         headers: {
           Accept: "application/json",
           Cookie: cookieHeader,
-          "x-timezone": "UTC",
         },
         timeoutMs: 15000,
       })
@@ -207,7 +172,7 @@
 
     if (ctx.util.isAuthStatus(resp.status)) throw authError()
     if (resp.status < 200 || resp.status >= 300) {
-      throw "MiMo usage request failed (HTTP " + String(resp.status) + "). Try again later."
+      throw "MiMo request failed (HTTP " + String(resp.status) + "). Try again later."
     }
 
     const body = ctx.util.tryParseJson(resp.bodyText)
@@ -229,13 +194,11 @@
     return body.data && typeof body.data === "object" ? body.data : body
   }
 
-  // The API reports a 0..1 fraction of the window consumed. Older payloads have
-  // also been seen as 0..100, so accept either rather than double-counting.
+  // The console reports a 0..1 fraction of the window consumed.
   function toPercent(value) {
     const n = readNumber(value)
     if (n === null || n < 0) return null
-    const percent = n <= 1 ? n * 100 : n
-    return Math.round(Math.min(100, percent) * 10) / 10
+    return Math.round(Math.min(100, n * 100) * 10) / 10
   }
 
   function findUsageItem(items, name) {
@@ -256,10 +219,10 @@
     }
   }
 
+  // Counts first: used/limit has no scale ambiguity. A group percent is the
+  // aggregate across every item in the group, so it is only safe as a fallback
+  // for a group with a single bucket.
   function itemPercent(item, groupPercent) {
-    const fromItem = toPercent(item && item.percent)
-    if (fromItem !== null) return fromItem
-
     const counts = itemUsedLimit(item)
     if (counts.used !== null && counts.limit !== null && counts.limit > 0) {
       const computed = (counts.used / counts.limit) * 100
@@ -267,6 +230,9 @@
         return Math.round(Math.max(0, Math.min(100, computed)) * 10) / 10
       }
     }
+
+    const fromItem = toPercent(item && item.percent)
+    if (fromItem !== null) return fromItem
 
     return toPercent(groupPercent)
   }
@@ -281,7 +247,7 @@
     return String(Math.round(n))
   }
 
-  function percentLine(ctx, label, item, groupPercent, resetsAt, periodDurationMs, gating) {
+  function percentLine(ctx, label, item, groupPercent, resetsAt) {
     const used = itemPercent(item, groupPercent)
     if (used === null) return null
 
@@ -291,10 +257,9 @@
       limit: 100,
       format: { kind: "percent" },
     }
+    // A countdown without a known reset would invent one, and a pace needs both
+    // a reset and a period length. Neither is available for the monthly window.
     if (resetsAt) opts.resetsAt = resetsAt
-    if (typeof periodDurationMs === "number" && periodDurationMs > 0) {
-      opts.periodDurationMs = periodDurationMs
-    }
     return ctx.line.progress(opts)
   }
 
@@ -358,9 +323,9 @@
 
     const planItem = findUsageItem(usageGroup.items, "plan_total_token")
     const bonusItem = findUsageItem(usageGroup.items, "compensation_total_token")
-    const monthItem =
-      findUsageItem(monthGroup.items, "month_total_token") ||
-      (Array.isArray(monthGroup.items) && monthGroup.items.length ? monthGroup.items[0] : null)
+    // Named lookup only. The console owns this bucket; a fallback to whatever
+    // happens to sit first would mislabel a future sibling.
+    const monthItem = findUsageItem(monthGroup.items, "month_total_token")
 
     const detail = readDetail(detailData)
     const nowMs = Date.now()
@@ -370,59 +335,62 @@
     // percents. That is distinct from a plan that simply has not been used.
     const monthPercent = toPercent(monthGroup.percent)
     const usagePercent = toPercent(usageGroup.percent)
-    const hasPlanData =
-      (Array.isArray(monthGroup.items) && monthGroup.items.length > 0) ||
+    const hasUsageData =
+      planItem !== null ||
+      monthItem !== null ||
       (Array.isArray(usageGroup.items) && usageGroup.items.length > 0) ||
+      (Array.isArray(monthGroup.items) && monthGroup.items.length > 0) ||
       (monthPercent !== null && monthPercent > 0) ||
-      (usagePercent !== null && usagePercent > 0) ||
-      (detail && (detail.planName || detail.planCode))
+      (usagePercent !== null && usagePercent > 0)
 
     const lines = []
+
+    if (!hasUsageData) {
+      // One status only: an expired empty account reads as expired.
+      if (detail && detail.expired) {
+        lines.push(ctx.line.badge({ label: "Status", text: "Expired", color: "#ef4444" }))
+      } else {
+        lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
+      }
+      return { plan: planLabel(detail) || undefined, lines }
+    }
 
     if (detail && detail.expired) {
       lines.push(ctx.line.badge({ label: "Status", text: "Expired", color: "#ef4444" }))
     }
 
-    if (!hasPlanData) {
-      lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
-      return { plan: planLabel(detail) || undefined, lines }
-    }
-
-    const monthLine = percentLine(
-      ctx,
-      "Monthly",
-      monthItem,
-      monthGroup.percent,
-      null,
-      MONTH_MS,
-      true
-    )
+    // The monthly bar is keyed on month_total_token by name. Falling back to
+    // the group percent would label whatever else the console puts in that
+    // group as the monthly window.
+    const monthLine = monthItem ? percentLine(ctx, "Monthly", monthItem, monthGroup.percent, null) : null
     if (monthLine) lines.push(monthLine)
 
-    const planLine = percentLine(ctx, "Plan", planItem, usageGroup.percent, periodEndIso, null, false)
+    // usage.percent mixes plan and compensation, so it is not a Plan reading.
+    const planLine = percentLine(ctx, "Plan", planItem, null, periodEndIso)
     if (planLine) lines.push(planLine)
 
+    // Compensation is a separate grant with no reset the console publishes, so
+    // it carries no countdown. A zero-size grant draws no bar.
     const bonusCounts = itemUsedLimit(bonusItem)
-    const bonusHasData =
+    const bonusHasGrant =
       bonusItem &&
       ((bonusCounts.limit !== null && bonusCounts.limit > 0) ||
-        bonusCounts.used !== null ||
-        readNumber(bonusItem.percent) !== null)
-    if (bonusHasData) {
-      const bonusLine = percentLine(ctx, "Bonus", bonusItem, null, periodEndIso, null, false)
+        (bonusCounts.used !== null && bonusCounts.used > 0))
+    if (bonusHasGrant) {
+      const bonusLine = percentLine(ctx, "Bonus", bonusItem, null, null)
       if (bonusLine) lines.push(bonusLine)
     }
 
     const planCounts = itemUsedLimit(planItem)
-    if (planCounts.used !== null || planCounts.limit !== null) {
-      const usedLabel = formatTokens(planCounts.used) || "0"
-      const limitLabel = formatTokens(planCounts.limit)
-      lines.push(
-        ctx.line.text({
-          label: "Tokens",
-          value: limitLabel ? usedLabel + " / " + limitLabel : usedLabel,
-        })
-      )
+    const planLimitLabel =
+      planCounts.limit !== null && planCounts.limit > 0 ? formatTokens(planCounts.limit) : null
+    const planUsedLabel = planCounts.used !== null ? formatTokens(planCounts.used) : null
+    if (planUsedLabel || planLimitLabel) {
+      let value
+      if (planUsedLabel && planLimitLabel) value = planUsedLabel + " / " + planLimitLabel
+      else if (planUsedLabel) value = planUsedLabel
+      else value = "? / " + planLimitLabel
+      lines.push(ctx.line.text({ label: "Tokens", value: value }))
     }
 
     // An expired subscription has no countdown worth showing beside its badge.
