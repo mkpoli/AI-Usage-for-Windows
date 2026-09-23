@@ -262,7 +262,7 @@ export function ProviderCard({
           <SkeletonLines lines={filteredSkeletonLines} />
         )}
 
-        {!error && (!loading || hasVisibleLines) && (
+        {(hasVisibleLines || (!error && !loading)) && (
           <div className="space-y-4">
             {groupLinesByType(filteredLines).map((group, gi) =>
               group.kind === "text" ? (
