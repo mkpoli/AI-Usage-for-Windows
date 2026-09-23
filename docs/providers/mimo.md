@@ -111,7 +111,7 @@ Item names the plugin reads:
 
 | Name | Line | Meaning |
 |---|---|---|
-| `plan_total_token` | Plan | Tokens left on the plan grant |
+| `plan_total_token` | Plan | Tokens used of the plan grant |
 | `compensation_total_token` | Bonus | Tokens granted outside the plan |
 | `month_total_token` | Monthly | Tokens used in the current monthly window |
 

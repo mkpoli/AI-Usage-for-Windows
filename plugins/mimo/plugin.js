@@ -23,8 +23,14 @@
     return trimmed ? trimmed : null
   }
 
+  // Rejects null-like values before coercion: Number(null) and Number("") are
+  // both 0, which would render a missing used/limit/percent as a full zero row.
   function readNumber(value) {
-    const n = Number(value)
+    if (typeof value === "number") return Number.isFinite(value) ? value : null
+    if (typeof value !== "string") return null
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const n = Number(trimmed)
     return Number.isFinite(n) ? n : null
   }
 
@@ -419,7 +425,8 @@
       )
     }
 
-    const renewal = detail ? formatRenewal(ctx, detail, nowMs) : null
+    // An expired subscription has no countdown worth showing beside its badge.
+    const renewal = detail && !detail.expired ? formatRenewal(ctx, detail, nowMs) : null
     if (renewal) lines.push(ctx.line.text({ label: "Renewal", value: renewal }))
 
     if (lines.length === 0) {

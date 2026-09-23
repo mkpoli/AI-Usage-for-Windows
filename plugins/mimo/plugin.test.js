@@ -187,7 +187,7 @@ describe("mimo plugin", () => {
     expect(result.lines.find((l) => l.label === "Renewal").value).toBe("Ends in 18 days")
   })
 
-  it("flags an expired subscription", async () => {
+  it("flags an expired subscription without a renewal countdown", async () => {
     const ctx = makeCtx()
     mockCookie(ctx)
     mockApi(ctx, { detail: { ...DETAIL, expired: true } })
@@ -195,6 +195,24 @@ describe("mimo plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines[0]).toMatchObject({ type: "badge", label: "Status", text: "Expired" })
+    expect(result.lines.find((l) => l.label === "Renewal")).toBeUndefined()
+  })
+
+  it("does not coerce a missing count into zero", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, {
+      usage: {
+        usage: { items: [{ name: "plan_total_token", used: null, limit: "", percent: undefined }] },
+        monthUsage: { items: [{ name: "month_total_token", percent: 0.25 }] },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Plan")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Tokens")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Monthly").used).toBe(25)
   })
 
   it("still reports usage when the detail call fails", async () => {
