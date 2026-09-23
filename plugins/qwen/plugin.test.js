@@ -28,19 +28,27 @@ const USAGE = {
   per1WeekResetTime: 1785103440000,
 }
 
+// Shape the China console returns for a monthly-metered Token Plan: a single
+// percentage window, which the five-hour and weekly check used to miss.
+const MONTHLY_USAGE = {
+  per1MonthPercentage: 0,
+  per1MonthResetTime: NOW + 11 * 24 * 60 * 60 * 1000,
+}
+
 const SUBSCRIPTION = {
   instanceCode: "sfm_tokenplansolo_public_cn-abc",
   specCode: "standard",
   remainingDays: 31,
+  startTime: NOW - 2 * 24 * 60 * 60 * 1000,
   endTime: NOW + 31 * 24 * 60 * 60 * 1000,
   autoRenewFlag: false,
   status: "VALID",
 }
 
 const QUOTA_CONFIG = {
-  standard: { five_hour: 3000, weekly: 10000 },
-  lite: { five_hour: 700, weekly: 2500 },
-  pro: { five_hour: 12000, weekly: 40000 },
+  standard: { five_hour: 3000, weekly: 10000, monthly: 45000 },
+  lite: { five_hour: 700, weekly: 2500, monthly: 11500 },
+  pro: { five_hour: 12000, weekly: 40000, monthly: 180000 },
 }
 
 const CODING_INSTANCE = {
@@ -75,10 +83,14 @@ function mockGateway(ctx, { usage = USAGE, subscription = SUBSCRIPTION, quota = 
     }
     const body = String(opts.bodyText || "")
     if (body.indexOf("v2%2Fusage") !== -1 || body.indexOf("v2/usage") !== -1) {
-      return { status: 200, headers: {}, bodyText: envelope(usage) }
+      return usage === null
+        ? { status: 500, headers: {}, bodyText: "" }
+        : { status: 200, headers: {}, bodyText: envelope(usage) }
     }
     if (body.indexOf("subscription") !== -1) {
-      return { status: 200, headers: {}, bodyText: envelope(subscription) }
+      return subscription === null
+        ? { status: 500, headers: {}, bodyText: "" }
+        : { status: 200, headers: {}, bodyText: envelope(subscription) }
     }
     if (body.indexOf("quota-config") !== -1) {
       return { status: 200, headers: {}, bodyText: envelope(quota) }
@@ -146,8 +158,107 @@ describe("qwen plugin", () => {
     expect(result.lines.find((l) => l.label === "Allowance")).toEqual({
       type: "text",
       label: "Allowance",
-      value: "3000 / 5h · 10000 / week",
+      value: "3000 / 5h · 10000 / week · 45000 / month",
     })
+  })
+
+  it("renders a monthly-metered token plan as active", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockGateway(ctx, {
+      usage: MONTHLY_USAGE,
+      subscription: {
+        instanceCode: "sfm_tokenplansolo_public_cn-monthly",
+        specCode: "standard",
+        remainingDays: 10,
+        startTime: NOW - 20 * 24 * 60 * 60 * 1000,
+        endTime: NOW + 10 * 24 * 60 * 60 * 1000,
+        autoRenewFlag: false,
+        status: "VALID",
+      },
+      quota: {
+        standard: { five_hour: 3000, monthly: 45000 },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Token Plan Standard")
+    expect(result.lines.find((l) => l.label === "Monthly")).toMatchObject({
+      type: "progress",
+      used: 0,
+      limit: 100,
+      format: { kind: "percent" },
+      periodDurationMs: 30 * 24 * 60 * 60 * 1000,
+    })
+    expect(result.lines.find((l) => l.label === "Allowance")).toEqual({
+      type: "text",
+      label: "Allowance",
+      value: "3000 / 5h · 45000 / month",
+    })
+    expect(result.lines.find((l) => l.label === "Renewal").value).toBe("Ends in 10 days")
+  })
+
+  it("prefers the remaining-days count the console reports", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockGateway(ctx, {
+      usage: MONTHLY_USAGE,
+      subscription: {
+        ...SUBSCRIPTION,
+        remainingDays: 10,
+        endTime: NOW + 12 * 24 * 60 * 60 * 1000,
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Renewal").value).toBe("Ends in 10 days")
+  })
+
+  it("falls back to the end time when the remaining-days count is absent", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockGateway(ctx, {
+      usage: MONTHLY_USAGE,
+      subscription: {
+        ...SUBSCRIPTION,
+        remainingDays: null,
+        endTime: NOW + 31 * 24 * 60 * 60 * 1000,
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Renewal").value).toBe("Ends in 31 days")
+  })
+
+  it("ignores an explicitly null usage percentage", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockGateway(ctx, {
+      usage: { per1MonthPercentage: null, per5HourPercentage: null, per1WeekPercentage: null },
+      subscription: {},
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines).toEqual([
+      { type: "badge", label: "Status", text: "No active plan", color: "#a3a3a3" },
+    ])
+  })
+
+  it("keeps a token plan whose usage call failed but whose subscription is live", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockGateway(ctx, { usage: null, quota: {} })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Token Plan Standard")
+    expect(result.lines.find((l) => l.label === "Renewal").value).toBe("Ends in 31 days")
   })
 
   it("says Ends when auto renew is off", async () => {
@@ -183,7 +294,7 @@ describe("qwen plugin", () => {
   it("falls back to the coding plan when there is no token plan", async () => {
     const ctx = makeCtx()
     mockCookie(ctx)
-    mockGateway(ctx, { usage: {}, coding: [CODING_INSTANCE] })
+    mockGateway(ctx, { usage: {}, subscription: {}, coding: [CODING_INSTANCE] })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -197,10 +308,25 @@ describe("qwen plugin", () => {
     expect(result.lines.find((l) => l.label === "Monthly")).toMatchObject({ used: 45000, limit: 90000 })
   })
 
+  it("prefers an active coding plan over an expired token plan", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockGateway(ctx, {
+      usage: USAGE,
+      subscription: { ...SUBSCRIPTION, status: "INVALID" },
+      coding: [CODING_INSTANCE],
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Pro 39")
+    expect(result.lines.find((l) => l.label === "Status")).toBeUndefined()
+  })
+
   it("reports when the account has no plan at all", async () => {
     const ctx = makeCtx()
     mockCookie(ctx)
-    mockGateway(ctx, { usage: {}, coding: [] })
+    mockGateway(ctx, { usage: {}, subscription: {}, coding: [] })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)

@@ -68,12 +68,12 @@ Providers expose different things, so the app shows different lines for each. `�
 | Sakana AI | ● | ● | ○ | ○ | ○ | ○ | ● |
 | Kimi | ● | ● | ○ | ○ | ○ | ○ | ○ |
 | MiMo | ○ | ○ | ● | ○ | ○ | ○ | ● |
-| Qwen | ● | ● | ●¹ | ○ | ○ | ○ | ● |
+| Qwen | ● | ● | ● | ○ | ○ | ○ | ● |
 | Z.ai | ● | ● | ●² | ○ | ○ | ○ | ○ |
 | Antigravity | ○ | ○ | ○ | ○ | ● | ○ | ○ |
 | Cursor | ○ | ○ | ● | ● | ○ | ○ | ● |
 
-Qwen covers two subscriptions: a Token Plan reporting five-hour and weekly windows as percentages, and a Coding Plan reporting five-hour, weekly, and monthly request counts (¹ monthly is Coding Plan only). MiMo reports the Token Plan's monthly window beside the plan-wide token grant, and adds a compensation grant when the account holds one. Z.ai reports its GLM Coding windows as credits spent against each allowance, or as a percentage on token-metered plans, and its monthly line (²) counts web search and reader calls on the plans that meter them. Codex adds a code-review quota line. Grok's shared pool resets weekly or monthly depending on the plan, and it adds a Grok Build product line. Copilot splits its monthly quota into Premium and Chat on paid plans, Chat and Completions on the free plan. Cursor splits its cycle into auto and API usage.
+Qwen covers two subscriptions: a Token Plan reporting the windows its spec meters as percentages, and a Coding Plan reporting five-hour, weekly, and monthly request counts. MiMo reports the Token Plan's monthly window beside the plan-wide token grant, and adds a compensation grant when the account holds one. Z.ai reports its GLM Coding windows as credits spent against each allowance, or as a percentage on token-metered plans, and its monthly line (²) counts web search and reader calls on the plans that meter them. Codex adds a code-review quota line. Grok's shared pool resets weekly or monthly depending on the plan, and it adds a Grok Build product line. Copilot splits its monthly quota into Premium and Chat on paid plans, Chat and Completions on the free plan. Cursor splits its cycle into auto and API usage.
 
 #### Credentials and refresh
 
@@ -259,12 +259,12 @@ Provider마다 제공하는 항목이 달라 앱에 표시되는 줄도 달라�
 | Sakana AI | ● | ● | ○ | ○ | ○ | ○ | ● |
 | Kimi | ● | ● | ○ | ○ | ○ | ○ | ○ |
 | MiMo | ○ | ○ | ● | ○ | ○ | ○ | ● |
-| Qwen | ● | ● | ●¹ | ○ | ○ | ○ | ● |
+| Qwen | ● | ● | ● | ○ | ○ | ○ | ● |
 | Z.ai | ● | ● | ●² | ○ | ○ | ○ | ○ |
 | Antigravity | ○ | ○ | ○ | ○ | ● | ○ | ○ |
 | Cursor | ○ | ○ | ● | ● | ○ | ○ | ● |
 
-Qwen은 두 가지 구독을 지원합니다. Token Plan은 5시간·주간 창을 백분율로, Coding Plan은 5시간·주간·월간을 요청 수로 보고합니다(¹ 월간은 Coding Plan 전용). MiMo는 Token Plan의 월간 창과 플랜 전체 token grant를 함께 보여주며, 보상 grant가 있으면 추가로 표시합니다. Z.ai는 GLM Coding의 창을 각 할당량 대비 소비한 크레딧으로, 토큰 기반 플랜에서는 백분율로 보고하며, 월간 줄(²)은 웹 검색과 리더 호출 수를 세는 플랜에서만 나타납니다. Codex에는 코드 리뷰 quota 줄이 추가됩니다. Grok의 공유 pool은 플랜에 따라 주간 또는 월간으로 초기화되며 Grok Build product 줄이 추가됩니다. Copilot은 월간 quota를 유료 플랜에서 Premium과 Chat으로, 무료 플랜에서 Chat과 Completions로 나눕니다. Cursor는 청구 주기를 auto 사용량과 API 사용량으로 나눕니다.
+Qwen은 두 가지 구독을 지원합니다. Token Plan은 해당 스펙이 측정하는 창을 백분율로, Coding Plan은 5시간·주간·월간을 요청 수로 보고합니다. MiMo는 Token Plan의 월간 창과 플랜 전체 token grant를 함께 보여주며, 보상 grant가 있으면 추가로 표시합니다. Z.ai는 GLM Coding의 창을 각 할당량 대비 소비한 크레딧으로, 토큰 기반 플랜에서는 백분율로 보고하며, 월간 줄(²)은 웹 검색과 리더 호출 수를 세는 플랜에서만 나타납니다. Codex에는 코드 리뷰 quota 줄이 추가됩니다. Grok의 공유 pool은 플랜에 따라 주간 또는 월간으로 초기화되며 Grok Build product 줄이 추가됩니다. Copilot은 월간 quota를 유료 플랜에서 Premium과 Chat으로, 무료 플랜에서 Chat과 Completions로 나눕니다. Cursor는 청구 주기를 auto 사용량과 API 사용량으로 나눕니다.
 
 #### Credential과 갱신
 

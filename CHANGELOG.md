@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Qwen reads Token Plans whose usage window is monthly. The usage endpoint returns `per1MonthPercentage` for those accounts, which the five-hour and weekly check skipped, so a live plan showed "No active plan" beside a console that listed its start date and remaining days. The monthly window and its `monthly` allowance now render, the subscription record alone is enough to count as a Token Plan, and the renewal line uses the remaining-days figure the console reports instead of recomputing from the end timestamp.
+
 ## v0.7.0 - 2026-09-23
 
 ### Added
