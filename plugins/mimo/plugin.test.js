@@ -214,6 +214,29 @@ describe("mimo plugin", () => {
     expect(result.lines.find((l) => l.label === "Monthly")).toBeUndefined()
   })
 
+  it("does not fold a sibling month bucket into the monthly window", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockApi(ctx, {
+      usage: {
+        usage: { items: [{ name: "plan_total_token", percent: 0.4 }] },
+        monthUsage: {
+          percent: 0.6,
+          items: [
+            { name: "month_total_token" },
+            { name: "some_other_bucket", used: 9, limit: 10, percent: 0.9 },
+          ],
+        },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    // The named item has no reading of its own, and the group percent is an
+    // aggregate across both buckets, so no Monthly bar is drawn.
+    expect(result.lines.find((l) => l.label === "Monthly")).toBeUndefined()
+  })
+
   it("says Ends when auto renew is off", async () => {
     const ctx = makeCtx()
     mockCookie(ctx)

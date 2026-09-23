@@ -359,10 +359,12 @@
       lines.push(ctx.line.badge({ label: "Status", text: "Expired", color: "#ef4444" }))
     }
 
-    // The monthly bar is keyed on month_total_token by name. Falling back to
-    // the group percent would label whatever else the console puts in that
-    // group as the monthly window.
-    const monthLine = monthItem ? percentLine(ctx, "Monthly", monthItem, monthGroup.percent, null) : null
+    // The monthly bar is keyed on month_total_token by name. The group percent
+    // is only a safe fallback when that group holds a single bucket, so a
+    // sibling item is never folded into the monthly window.
+    const monthGroupPercent =
+      Array.isArray(monthGroup.items) && monthGroup.items.length === 1 ? monthGroup.percent : null
+    const monthLine = monthItem ? percentLine(ctx, "Monthly", monthItem, monthGroupPercent, null) : null
     if (monthLine) lines.push(monthLine)
 
     // usage.percent mixes plan and compensation, so it is not a Plan reading.
