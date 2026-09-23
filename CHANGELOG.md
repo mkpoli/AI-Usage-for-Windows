@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.2 - 2026-09-24
+
+### Fixed
+
+- Grok treated one failed call to the usage endpoint as final. A dropped connection, an HTTP 502/503/504 from the CDN, or a gRPC 14 from the billing service never got a second attempt, and the card showed a bare `gRPC 14` with none of the server's own explanation. Those three cases retry once, the error carries the decoded gRPC message, and the code and message land in `AI Usage.log`, where these throws used to disappear. A gRPC 14 now reads `Grok is temporarily unavailable (gRPC 14: …)`.
+
+- A provider card dropped its usage bars as soon as a refresh failed, although the last good fetch was still held in memory. The error sits above the metrics, so one bad poll no longer hides numbers fetched minutes earlier. A card that has never loaded still shows only the error.
+
 ## v0.7.1 - 2026-09-23
 
 ### Fixed
