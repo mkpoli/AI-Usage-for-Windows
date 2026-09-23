@@ -298,6 +298,38 @@ describe("grok plugin", () => {
     )
   })
 
+  it("prefers the grpc message over a generic HTTP error status", async () => {
+    const ctx = makeGrokCtx()
+    ctx.host.http.request.mockImplementation((request) => {
+      if (request.url === "https://grok.com/rest/subscriptions") {
+        return { status: 200, headers: {}, bodyText: JSON.stringify({ subscriptions: [] }), bodyBase64: "" }
+      }
+      return {
+        status: 503,
+        headers: { "grpc-status": "14", "grpc-message": "upstream%20unavailable" },
+        bodyText: "",
+        bodyBase64: "",
+      }
+    })
+
+    expect(() => plugin.probe(ctx)).toThrow(
+      "Grok is temporarily unavailable (gRPC 14: upstream unavailable). Try again later."
+    )
+  })
+
+  it("rejects a frame whose length overruns the body", async () => {
+    const ctx = makeGrokCtx()
+    const overrun = Buffer.from([0, 0x7f, 0xff, 0xff, 0xff, 0x01])
+    ctx.host.http.request.mockImplementation((request) => {
+      if (request.url === "https://grok.com/rest/subscriptions") {
+        return { status: 200, headers: {}, bodyText: JSON.stringify({ subscriptions: [] }), bodyBase64: "" }
+      }
+      return { status: 200, headers: { "grpc-status": "0" }, bodyText: "", bodyBase64: overrun.toString("base64") }
+    })
+
+    expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
+  })
+
   it("throws parse error when response frame is missing", async () => {
     const ctx = makeGrokCtx({ bodyBase64: "" })
 

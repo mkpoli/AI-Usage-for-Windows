@@ -208,18 +208,24 @@
     return bytes(0, (len >>> 24) & 0xff, (len >>> 16) & 0xff, (len >>> 8) & 0xff, len & 0xff) + messageBytes
   }
 
+  function readFrameLength(data, offset) {
+    return (
+      ((data.charCodeAt(offset + 1) & 0xff) * 0x1000000 +
+        ((data.charCodeAt(offset + 2) & 0xff) << 16) +
+        ((data.charCodeAt(offset + 3) & 0xff) << 8) +
+        (data.charCodeAt(offset + 4) & 0xff)) >>>
+      0
+    )
+  }
+
   function readGrpcMessage(ctx, bodyBase64) {
     const data = ctx.base64.decode(String(bodyBase64 || ""))
     let offset = 0
     while (offset + 5 <= data.length) {
       const flags = data.charCodeAt(offset) & 0xff
-      const len =
-        ((data.charCodeAt(offset + 1) & 0xff) << 24) |
-        ((data.charCodeAt(offset + 2) & 0xff) << 16) |
-        ((data.charCodeAt(offset + 3) & 0xff) << 8) |
-        (data.charCodeAt(offset + 4) & 0xff)
+      const len = readFrameLength(data, offset)
       offset += 5
-      if (offset + len > data.length) return null
+      if (len > data.length - offset) return null
       const message = data.slice(offset, offset + len)
       offset += len
       if ((flags & 0x80) === 0) return message
@@ -426,13 +432,9 @@
     let trailers = {}
     while (offset + 5 <= data.length) {
       const flags = data.charCodeAt(offset) & 0xff
-      const len =
-        ((data.charCodeAt(offset + 1) & 0xff) << 24) |
-        ((data.charCodeAt(offset + 2) & 0xff) << 16) |
-        ((data.charCodeAt(offset + 3) & 0xff) << 8) |
-        (data.charCodeAt(offset + 4) & 0xff)
+      const len = readFrameLength(data, offset)
       offset += 5
-      if (offset + len > data.length) break
+      if (len > data.length - offset) break
       const message = data.slice(offset, offset + len)
       offset += len
       if ((flags & 0x80) !== 0) trailers = parseTrailerBlock(message)
@@ -502,16 +504,15 @@
     if (ctx.util.isAuthStatus(resp.status)) {
       throw "Grok login required. Add your grok.com cookie to `~/.ai-usage/config.json` under `grok.cookie`."
     }
-    if (resp.status !== 200) {
-      throw "Grok usage fetch failed (HTTP " + resp.status + "). Try again later."
-    }
-
     if (status && status.code === "16") {
       throw "Grok login required. Add your grok.com cookie to `~/.ai-usage/config.json` under `grok.cookie`."
     }
     if (status && status.code !== "0") {
       ctx.host.log.error("usage gRPC " + status.code + (status.message ? ": " + status.message : ""))
       throw grpcFailureMessage(status.code, status.message)
+    }
+    if (resp.status !== 200) {
+      throw "Grok usage fetch failed (HTTP " + resp.status + "). Try again later."
     }
 
     const message = readGrpcMessage(ctx, resp.bodyBase64)
