@@ -444,21 +444,20 @@
 
   function readGrpcStatus(ctx, resp) {
     const headers = (resp && resp.headers) || {}
-    const headerStatus = headers["grpc-status"] || headers["Grpc-Status"]
-    const headerMessage = headers["grpc-message"] || headers["Grpc-Message"]
-    if (headerStatus !== undefined) {
-      return { code: String(headerStatus).trim(), message: decodeGrpcMessage(headerMessage) }
+    const rawStatus =
+      headers["grpc-status"] !== undefined ? headers["grpc-status"] : headers["Grpc-Status"]
+    const rawMessage =
+      headers["grpc-message"] !== undefined ? headers["grpc-message"] : headers["Grpc-Message"]
+    const headerCode = String(rawStatus === undefined || rawStatus === null ? "" : rawStatus).trim()
+    if (headerCode) {
+      return { code: headerCode, message: decodeGrpcMessage(rawMessage) }
     }
     const trailers = readGrpcTrailers(ctx, resp && resp.bodyBase64)
-    if (trailers["grpc-status"] !== undefined) {
-      return { code: String(trailers["grpc-status"]).trim(), message: decodeGrpcMessage(trailers["grpc-message"]) }
+    const trailerCode = String(trailers["grpc-status"] === undefined ? "" : trailers["grpc-status"]).trim()
+    if (trailerCode) {
+      return { code: trailerCode, message: decodeGrpcMessage(trailers["grpc-message"]) }
     }
     return null
-  }
-
-  // gRPC 4 deadline exceeded, 8 resource exhausted, 14 unavailable.
-  function isTransientGrpc(code) {
-    return code === "4" || code === "8" || code === "14"
   }
 
   function grpcFailureMessage(code, message) {
@@ -469,7 +468,7 @@
 
   function requestUsage(ctx, cookieHeader) {
     try {
-      return ctx.util.request({
+      return { resp: ctx.util.request({
         method: "POST",
         url: USAGE_URL,
         headers: {
@@ -483,23 +482,36 @@
         },
         bodyBase64: ctx.base64.encode(grpcFrame("")),
         timeoutMs: 15000,
-      })
+      }) }
     } catch (e) {
       ctx.host.log.error("usage request exception: " + String(e))
-      throw "Request failed. Check your connection."
+      return { error: true }
     }
   }
 
+  function shouldRetryUsage(attempt, status) {
+    if (attempt.error) return true
+    const http = attempt.resp.status
+    if (http === 502 || http === 503 || http === 504) return true
+    return Boolean(status && status.code === "14")
+  }
+
   function fetchUsage(ctx, cookieHeader) {
-    let resp = requestUsage(ctx, cookieHeader)
-    let status = readGrpcStatus(ctx, resp)
-    if (status && isTransientGrpc(status.code)) {
-      ctx.host.log.warn(
-        "usage returned gRPC " + status.code + (status.message ? " (" + status.message + ")" : "") + ", retrying once"
-      )
-      resp = requestUsage(ctx, cookieHeader)
-      status = readGrpcStatus(ctx, resp)
+    let attempt = requestUsage(ctx, cookieHeader)
+    let status = attempt.resp ? readGrpcStatus(ctx, attempt.resp) : null
+    if (shouldRetryUsage(attempt, status)) {
+      const why = attempt.error
+        ? "request failed"
+        : status && status.code === "14"
+          ? "gRPC 14"
+          : "HTTP " + attempt.resp.status
+      ctx.host.log.warn("usage " + why + ", retrying once")
+      attempt = requestUsage(ctx, cookieHeader)
+      status = attempt.resp ? readGrpcStatus(ctx, attempt.resp) : null
     }
+
+    if (attempt.error) throw "Request failed. Check your connection."
+    const resp = attempt.resp
 
     if (ctx.util.isAuthStatus(resp.status)) {
       throw "Grok login required. Add your grok.com cookie to `~/.ai-usage/config.json` under `grok.cookie`."

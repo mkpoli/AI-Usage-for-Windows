@@ -77,6 +77,13 @@ function grokUsageResponse({ pool = 62.5, build = 25 } = {}) {
   return frame.toString("base64")
 }
 
+function withTrailers(bodyBase64, trailerText) {
+  const message = Buffer.from(bodyBase64, "base64")
+  const trailer = Buffer.concat([Buffer.from([0x80]), Buffer.alloc(4), Buffer.from(trailerText, "utf8")])
+  trailer.writeUInt32BE(trailerText.length, 1)
+  return Buffer.concat([message, trailer]).toString("base64")
+}
+
 function unusedGrokResponse() {
   const config = Buffer.concat([
     msg(8, usagePeriod()),
@@ -328,6 +335,93 @@ describe("grok plugin", () => {
     })
 
     expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
+  })
+
+  it("reads a successful grpc-web body whose OK status lives in trailers", async () => {
+    const ctx = makeGrokCtx({
+      bodyBase64: withTrailers(grokUsageResponse({ pool: 40, build: 10 }), "grpc-status: 0\r\n"),
+    })
+    ctx.host.http.request.mockImplementation((request) => {
+      if (request.url === "https://grok.com/rest/subscriptions") {
+        return { status: 200, headers: {}, bodyText: JSON.stringify({ subscriptions: [] }), bodyBase64: "" }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: "",
+        bodyBase64: withTrailers(grokUsageResponse({ pool: 40, build: 10 }), "grpc-status: 0\r\n"),
+      }
+    })
+
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Usage pool")?.used).toBe(40)
+  })
+
+  it("ignores an empty grpc-status header and reads trailers instead", async () => {
+    const ctx = makeGrokCtx()
+    const trailerText = "grpc-status: 13\r\ngrpc-message: Missing%20request%20message.\r\n"
+    ctx.host.http.request.mockImplementation((request) => {
+      if (request.url === "https://grok.com/rest/subscriptions") {
+        return { status: 200, headers: {}, bodyText: JSON.stringify({ subscriptions: [] }), bodyBase64: "" }
+      }
+      return {
+        status: 200,
+        headers: { "grpc-status": "" },
+        bodyText: "",
+        bodyBase64: withTrailers("", trailerText),
+      }
+    })
+
+    expect(() => plugin.probe(ctx)).toThrow(
+      "Grok usage fetch failed (gRPC 13: Missing request message). Try again later."
+    )
+  })
+
+  it("retries once when the request throws", async () => {
+    const ctx = makeGrokCtx()
+    let usageCalls = 0
+    ctx.host.http.request.mockImplementation((request) => {
+      if (request.url === "https://grok.com/rest/subscriptions") {
+        return { status: 200, headers: {}, bodyText: JSON.stringify({ subscriptions: [] }), bodyBase64: "" }
+      }
+      usageCalls += 1
+      if (usageCalls === 1) throw new Error("error sending request")
+      return {
+        status: 200,
+        headers: { "grpc-status": "0" },
+        bodyText: "",
+        bodyBase64: grokUsageResponse({ pool: 8 }),
+      }
+    })
+
+    const result = plugin.probe(ctx)
+
+    expect(usageCalls).toBe(2)
+    expect(result.lines.find((line) => line.label === "Usage pool")?.used).toBe(8)
+  })
+
+  it("retries once on HTTP 503 without a grpc status", async () => {
+    const ctx = makeGrokCtx()
+    let usageCalls = 0
+    ctx.host.http.request.mockImplementation((request) => {
+      if (request.url === "https://grok.com/rest/subscriptions") {
+        return { status: 200, headers: {}, bodyText: JSON.stringify({ subscriptions: [] }), bodyBase64: "" }
+      }
+      usageCalls += 1
+      if (usageCalls === 1) return { status: 503, headers: {}, bodyText: "", bodyBase64: "" }
+      return {
+        status: 200,
+        headers: { "grpc-status": "0" },
+        bodyText: "",
+        bodyBase64: grokUsageResponse({ pool: 5 }),
+      }
+    })
+
+    const result = plugin.probe(ctx)
+
+    expect(usageCalls).toBe(2)
+    expect(result.lines.find((line) => line.label === "Usage pool")?.used).toBe(5)
   })
 
   it("throws parse error when response frame is missing", async () => {
