@@ -60,6 +60,23 @@ describe("ProviderCard", () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
+  it("keeps existing metrics visible when a refresh fails", () => {
+    render(
+      <ProviderCard
+        name="Stale"
+        displayMode="used"
+        error="Grok is temporarily unavailable (gRPC 14). Try again later."
+        lines={[
+          { type: "progress", label: "Usage pool", used: 12, limit: 100, format: { kind: "percent" } },
+        ]}
+      />
+    )
+
+    expect(screen.getByText(/temporarily unavailable/)).toBeInTheDocument()
+    expect(screen.getByText("12%")).toBeInTheDocument()
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "12")
+  })
+
   it("renders loading skeleton", () => {
     render(
       <ProviderCard
