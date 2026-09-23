@@ -69,5 +69,6 @@ Config file setup is usually easier for a tray app launched from the Start menu.
 |---|---|
 | `Missing Grok credentials` | No cookie was found in `~/.ai-usage/config.json` or `GROK_COOKIE`. |
 | `Grok login required` | The cookie expired or is missing the values required by grok.com. |
-| `Grok usage fetch failed` | The usage endpoint returned an HTTP or gRPC error. |
+| `Grok is temporarily unavailable (gRPC 14…)` | The billing service was unreachable. The provider retries once after a transport failure, an HTTP 502/503/504, or gRPC 14. |
+| `Grok usage fetch failed` | The usage endpoint returned an HTTP or gRPC error. The server's gRPC message is included when it sends one. |
 | `Could not parse usage data` | The endpoint response shape changed or the binary frame was incomplete. |

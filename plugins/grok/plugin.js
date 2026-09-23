@@ -208,18 +208,24 @@
     return bytes(0, (len >>> 24) & 0xff, (len >>> 16) & 0xff, (len >>> 8) & 0xff, len & 0xff) + messageBytes
   }
 
+  function readFrameLength(data, offset) {
+    return (
+      ((data.charCodeAt(offset + 1) & 0xff) * 0x1000000 +
+        ((data.charCodeAt(offset + 2) & 0xff) << 16) +
+        ((data.charCodeAt(offset + 3) & 0xff) << 8) +
+        (data.charCodeAt(offset + 4) & 0xff)) >>>
+      0
+    )
+  }
+
   function readGrpcMessage(ctx, bodyBase64) {
     const data = ctx.base64.decode(String(bodyBase64 || ""))
     let offset = 0
     while (offset + 5 <= data.length) {
       const flags = data.charCodeAt(offset) & 0xff
-      const len =
-        ((data.charCodeAt(offset + 1) & 0xff) << 24) |
-        ((data.charCodeAt(offset + 2) & 0xff) << 16) |
-        ((data.charCodeAt(offset + 3) & 0xff) << 8) |
-        (data.charCodeAt(offset + 4) & 0xff)
+      const len = readFrameLength(data, offset)
       offset += 5
-      if (offset + len > data.length) return null
+      if (len > data.length - offset) return null
       const message = data.slice(offset, offset + len)
       offset += len
       if ((flags & 0x80) === 0) return message
@@ -396,10 +402,73 @@
     return null
   }
 
-  function fetchUsage(ctx, cookieHeader) {
-    let resp
+  function decodeGrpcMessage(raw) {
+    const text = String(raw || "").trim()
+    if (!text) return ""
     try {
-      resp = ctx.util.request({
+      return decodeURIComponent(text)
+    } catch (e) {
+      return text
+    }
+  }
+
+  function parseTrailerBlock(text) {
+    const out = {}
+    const lines = String(text || "").split("\r\n")
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]
+      const sep = line.indexOf(":")
+      if (sep <= 0) continue
+      const name = line.slice(0, sep).trim().toLowerCase()
+      const value = line.slice(sep + 1).trim()
+      if (name) out[name] = value
+    }
+    return out
+  }
+
+  function readGrpcTrailers(ctx, bodyBase64) {
+    const data = ctx.base64.decode(String(bodyBase64 || ""))
+    let offset = 0
+    let trailers = {}
+    while (offset + 5 <= data.length) {
+      const flags = data.charCodeAt(offset) & 0xff
+      const len = readFrameLength(data, offset)
+      offset += 5
+      if (len > data.length - offset) break
+      const message = data.slice(offset, offset + len)
+      offset += len
+      if ((flags & 0x80) !== 0) trailers = parseTrailerBlock(message)
+    }
+    return trailers
+  }
+
+  function readGrpcStatus(ctx, resp) {
+    const headers = (resp && resp.headers) || {}
+    const rawStatus =
+      headers["grpc-status"] !== undefined ? headers["grpc-status"] : headers["Grpc-Status"]
+    const rawMessage =
+      headers["grpc-message"] !== undefined ? headers["grpc-message"] : headers["Grpc-Message"]
+    const headerCode = String(rawStatus === undefined || rawStatus === null ? "" : rawStatus).trim()
+    if (headerCode) {
+      return { code: headerCode, message: decodeGrpcMessage(rawMessage) }
+    }
+    const trailers = readGrpcTrailers(ctx, resp && resp.bodyBase64)
+    const trailerCode = String(trailers["grpc-status"] === undefined ? "" : trailers["grpc-status"]).trim()
+    if (trailerCode) {
+      return { code: trailerCode, message: decodeGrpcMessage(trailers["grpc-message"]) }
+    }
+    return null
+  }
+
+  function grpcFailureMessage(code, message) {
+    const detail = message ? ": " + message.replace(/[.\s]+$/, "") : ""
+    if (code === "14") return "Grok is temporarily unavailable (gRPC 14" + detail + "). Try again later."
+    return "Grok usage fetch failed (gRPC " + code + detail + "). Try again later."
+  }
+
+  function requestUsage(ctx, cookieHeader) {
+    try {
+      return { resp: ctx.util.request({
         method: "POST",
         url: USAGE_URL,
         headers: {
@@ -413,25 +482,49 @@
         },
         bodyBase64: ctx.base64.encode(grpcFrame("")),
         timeoutMs: 15000,
-      })
+      }) }
     } catch (e) {
       ctx.host.log.error("usage request exception: " + String(e))
-      throw "Request failed. Check your connection."
+      return { error: true }
     }
+  }
+
+  function shouldRetryUsage(attempt, status) {
+    if (attempt.error) return true
+    const http = attempt.resp.status
+    if (http === 502 || http === 503 || http === 504) return true
+    return Boolean(status && status.code === "14")
+  }
+
+  function fetchUsage(ctx, cookieHeader) {
+    let attempt = requestUsage(ctx, cookieHeader)
+    let status = attempt.resp ? readGrpcStatus(ctx, attempt.resp) : null
+    if (shouldRetryUsage(attempt, status)) {
+      const why = attempt.error
+        ? "request failed"
+        : status && status.code === "14"
+          ? "gRPC 14"
+          : "HTTP " + attempt.resp.status
+      ctx.host.log.warn("usage " + why + ", retrying once")
+      attempt = requestUsage(ctx, cookieHeader)
+      status = attempt.resp ? readGrpcStatus(ctx, attempt.resp) : null
+    }
+
+    if (attempt.error) throw "Request failed. Check your connection."
+    const resp = attempt.resp
 
     if (ctx.util.isAuthStatus(resp.status)) {
       throw "Grok login required. Add your grok.com cookie to `~/.ai-usage/config.json` under `grok.cookie`."
     }
-    if (resp.status !== 200) {
-      throw "Grok usage fetch failed (HTTP " + resp.status + "). Try again later."
-    }
-
-    const status = resp.headers && (resp.headers["grpc-status"] || resp.headers["Grpc-Status"])
-    if (String(status || "0") === "16") {
+    if (status && status.code === "16") {
       throw "Grok login required. Add your grok.com cookie to `~/.ai-usage/config.json` under `grok.cookie`."
     }
-    if (status !== undefined && String(status) !== "0") {
-      throw "Grok usage fetch failed (gRPC " + String(status) + "). Try again later."
+    if (status && status.code !== "0") {
+      ctx.host.log.error("usage gRPC " + status.code + (status.message ? ": " + status.message : ""))
+      throw grpcFailureMessage(status.code, status.message)
+    }
+    if (resp.status !== 200) {
+      throw "Grok usage fetch failed (HTTP " + resp.status + "). Try again later."
     }
 
     const message = readGrpcMessage(ctx, resp.bodyBase64)
