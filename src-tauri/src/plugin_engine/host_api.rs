@@ -16,7 +16,7 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-const WHITELISTED_ENV_VARS: [&str; 23] = [
+const WHITELISTED_ENV_VARS: [&str; 25] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -40,6 +40,8 @@ const WHITELISTED_ENV_VARS: [&str; 23] = [
     "GROK_COOKIE",
     "SAKANA_COOKIE",
     "SAKANA_SESSION_TOKEN",
+    "MIMO_COOKIE",
+    "MIMO_SESSION_COOKIE",
 ];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -513,6 +515,8 @@ fn redact_body(body: &str) -> String {
         "analytics_tracking_id",
         "cookie",
         "cookies",
+        "sessionCookie",
+        "session_cookie",
         "sec_token",
         "secToken",
     ];
