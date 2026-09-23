@@ -59,6 +59,9 @@
   }
 
   function readNumber(value) {
+    // `Number(null)` and `Number("")` are 0, which would read as a present
+    // zero instead of an absent field.
+    if (value === null || value === undefined || value === "") return null
     const n = Number(value)
     return Number.isFinite(n) ? n : null
   }

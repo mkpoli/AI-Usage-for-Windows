@@ -217,6 +217,38 @@ describe("qwen plugin", () => {
     expect(result.lines.find((l) => l.label === "Renewal").value).toBe("Ends in 10 days")
   })
 
+  it("falls back to the end time when the remaining-days count is absent", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockGateway(ctx, {
+      usage: MONTHLY_USAGE,
+      subscription: {
+        ...SUBSCRIPTION,
+        remainingDays: null,
+        endTime: NOW + 31 * 24 * 60 * 60 * 1000,
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Renewal").value).toBe("Ends in 31 days")
+  })
+
+  it("ignores an explicitly null usage percentage", async () => {
+    const ctx = makeCtx()
+    mockCookie(ctx)
+    mockGateway(ctx, {
+      usage: { per1MonthPercentage: null, per5HourPercentage: null, per1WeekPercentage: null },
+      subscription: {},
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines).toEqual([
+      { type: "badge", label: "Status", text: "No active plan", color: "#a3a3a3" },
+    ])
+  })
+
   it("keeps a token plan whose usage call failed but whose subscription is live", async () => {
     const ctx = makeCtx()
     mockCookie(ctx)
