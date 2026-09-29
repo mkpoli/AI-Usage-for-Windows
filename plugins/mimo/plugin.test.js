@@ -571,6 +571,46 @@ describe("mimo plugin", () => {
       expect(() => plugin.probe(ctx)).toThrow("MiMo account login expired")
     })
 
+    it("never sends account cookies to a redirect that only looks like Xiaomi", async () => {
+      const ctx = makeCtx()
+      writeConfig(ctx, { accountCookie: ACCOUNT })
+      ctx.host.http.request.mockImplementation((opts) => {
+        if (String(opts.url).startsWith("https://account.xiaomi.com/pass/serviceLogin")) {
+          return {
+            status: 302,
+            headers: { location: "https://account.xiaomi.com:443@elsewhere.invalid/collect" },
+            bodyText: "",
+          }
+        }
+        return { status: 200, headers: {}, bodyText: "" }
+      })
+
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("MiMo account login expired")
+      expect(calls(ctx).some((o) => o.url.indexOf("elsewhere.invalid") !== -1)).toBe(false)
+    })
+
+    it("keeps a rotated passToken and keeps the ticket out of the log when the callback fails", async () => {
+      const ctx = makeCtx()
+      writeConfig(ctx, { accountCookie: ACCOUNT })
+      mockPassport(ctx)
+      const passport = ctx.host.http.request.getMockImplementation()
+      ctx.host.http.request.mockImplementation((opts) => {
+        if (String(opts.url).startsWith("https://platform.xiaomimimo.com/sts")) {
+          throw new Error("timed out: " + opts.url)
+        }
+        return passport(opts)
+      })
+
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("Request failed")
+
+      const stored = JSON.parse(ctx.host.fs.readText(STORE))
+      expect(stored.accountCookie).toBe("passToken=pt2; userId=42")
+      const logged = ctx.host.log.error.mock.calls.map((c) => c[0]).join("\n")
+      expect(logged).not.toContain("ticket=")
+    })
+
     it("keeps cookies the console rotates on a normal response", async () => {
       const ctx = makeCtx()
       writeConfig(ctx, { cookie: "api-platform_serviceToken=fresh; userId=42; api-platform_ph=old" })
