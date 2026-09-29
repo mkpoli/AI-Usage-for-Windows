@@ -3,6 +3,14 @@
   const PLATFORM_URL = "https://platform.xiaomimimo.com"
   const USAGE_URL = PLATFORM_URL + "/api/v1/tokenPlan/usage"
   const DETAIL_URL = PLATFORM_URL + "/api/v1/tokenPlan/detail"
+  // The console signs in through Xiaomi Passport under this service id. With the
+  // account's passToken cookie, the login URL redirects straight to the console's
+  // /sts callback, which issues a fresh api-platform_serviceToken.
+  const SERVICE_LOGIN_URL = "https://account.xiaomi.com/pass/serviceLogin?sid=api-platform&_group=DEFAULT"
+  const SERVICE_TOKEN_COOKIE = "api-platform_serviceToken"
+  const ACCOUNT_SITE = "xiaomi.com"
+  const PLATFORM_SITE = "xiaomimimo.com"
+  const MAX_LOGIN_HOPS = 8
 
   const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -141,7 +149,216 @@
     return null
   }
 
-  function authError() {
+  // The account.xiaomi.com cookies carry the long-lived Passport login. Only
+  // passToken and userId are needed; a missing userId is taken from the console
+  // cookie, which carries the same account id.
+  function loadAccountCookie(config, consoleHeader) {
+    const raw = pickFirstString([config.accountCookie, config.account_cookie])
+    const header = raw ? parseCookieInput(raw) : null
+    if (!header) return null
+    const jar = cookieJar(header)
+    if (!jar.get("passToken")) return null
+    if (!jar.get("userId") && consoleHeader) {
+      const userId = cookieJar(consoleHeader).get("userId")
+      if (userId) jar.set("userId", userId)
+    }
+    return jar.header()
+  }
+
+  function cookieJar(header) {
+    const order = []
+    const byName = {}
+    const text = readString(header)
+    if (text) {
+      const segments = text.split(";")
+      for (let i = 0; i < segments.length; i += 1) {
+        const segment = segments[i].trim()
+        const eq = segment.indexOf("=")
+        if (eq <= 0) continue
+        const name = segment.slice(0, eq).trim()
+        if (!Object.prototype.hasOwnProperty.call(byName, name)) order.push(name)
+        byName[name] = segment.slice(eq + 1).trim()
+      }
+    }
+    return {
+      get: function (name) {
+        return Object.prototype.hasOwnProperty.call(byName, name) ? byName[name] : null
+      },
+      set: function (name, value) {
+        if (!Object.prototype.hasOwnProperty.call(byName, name)) order.push(name)
+        byName[name] = value
+      },
+      remove: function (name) {
+        if (!Object.prototype.hasOwnProperty.call(byName, name)) return
+        delete byName[name]
+        order.splice(order.indexOf(name), 1)
+      },
+      header: function () {
+        return order
+          .map(function (name) {
+            return name + "=" + byName[name]
+          })
+          .join("; ")
+      },
+    }
+  }
+
+  // The host joins repeated set-cookie headers with newlines. An empty value or
+  // a zero Max-Age clears the cookie.
+  function applySetCookies(header, resp) {
+    const headers = resp && resp.headers && typeof resp.headers === "object" ? resp.headers : {}
+    const jar = cookieJar(header)
+    const keys = Object.keys(headers)
+    for (let i = 0; i < keys.length; i += 1) {
+      if (keys[i].toLowerCase() !== "set-cookie") continue
+      const lines = String(headers[keys[i]]).split(/[\r\n]+/)
+      for (let j = 0; j < lines.length; j += 1) {
+        const parts = lines[j].split(";")
+        const eq = parts[0].indexOf("=")
+        if (eq <= 0) continue
+        const name = parts[0].slice(0, eq).trim()
+        const value = parts[0].slice(eq + 1).trim()
+        const expired = parts.slice(1).some(function (attr) {
+          return /^\s*max-age\s*=\s*(0|-\d+)\s*$/i.test(attr)
+        })
+        if (!value || expired || value === "EXPIRED") jar.remove(name)
+        else jar.set(name, value)
+      }
+    }
+    return jar.header()
+  }
+
+  function readHeader(resp, name) {
+    const headers = resp && resp.headers && typeof resp.headers === "object" ? resp.headers : {}
+    const keys = Object.keys(headers)
+    for (let i = 0; i < keys.length; i += 1) {
+      if (keys[i].toLowerCase() === name) return readString(String(headers[keys[i]]).split(/[\r\n]+/)[0])
+    }
+    return null
+  }
+
+  // Cookies go only to the site that set them, and only over https.
+  function siteOf(url) {
+    const match = String(url).match(/^https:\/\/([^/?#:]+)/i)
+    if (!match) return null
+    const host = match[1].toLowerCase()
+    if (host === ACCOUNT_SITE || /\.xiaomi\.com$/.test(host)) return ACCOUNT_SITE
+    if (host === PLATFORM_SITE || /\.xiaomimimo\.com$/.test(host)) return PLATFORM_SITE
+    return null
+  }
+
+  function resolveLocation(location, base) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(location)) return location
+    const origin = String(base).match(/^[a-z]+:\/\/[^/]+/i)
+    if (!origin) return null
+    if (location.charAt(0) === "/") return origin[0] + location
+    return null
+  }
+
+  function accountLoginError() {
+    return (
+      "MiMo account login expired. Copy fresh account.xiaomi.com cookies into " +
+      "`~/.ai-usage/config.json` under `mimo.accountCookie`."
+    )
+  }
+
+  // Follows the Passport redirect chain by hand, keeping one cookie jar per site,
+  // until the console has issued a new service token. The chain ends at the
+  // console's followup URL, which is plain http, so the walk stops at the token.
+  function refreshSession(ctx, session) {
+    const jars = {}
+    jars[ACCOUNT_SITE] = session.account
+    jars[PLATFORM_SITE] = session.cookie || ""
+    const previousToken = cookieJar(jars[PLATFORM_SITE]).get(SERVICE_TOKEN_COOKIE)
+
+    let url = SERVICE_LOGIN_URL
+    let issued = null
+    for (let hop = 0; hop < MAX_LOGIN_HOPS && url; hop += 1) {
+      const site = siteOf(url)
+      if (!site) {
+        ctx.host.log.warn("session refresh stopped at an unexpected redirect")
+        break
+      }
+
+      const headers = { Accept: "text/html,application/xhtml+xml" }
+      if (jars[site]) headers.Cookie = jars[site]
+      let resp
+      try {
+        resp = ctx.util.request({ method: "GET", url: url, headers: headers, timeoutMs: 15000 })
+      } catch (e) {
+        ctx.host.log.error("session refresh request to " + site + " failed: " + String(e))
+        throw "Request failed. Check your connection."
+      }
+
+      jars[site] = applySetCookies(jars[site], resp)
+      const token = cookieJar(jars[PLATFORM_SITE]).get(SERVICE_TOKEN_COOKIE)
+      if (token && token !== previousToken) {
+        issued = token
+        break
+      }
+      if (resp.status < 300 || resp.status >= 400) break
+      const location = readHeader(resp, "location")
+      url = location ? resolveLocation(location, url) : null
+    }
+
+    if (jars[ACCOUNT_SITE] && jars[ACCOUNT_SITE] !== session.account) {
+      if (cookieJar(jars[ACCOUNT_SITE]).get("passToken")) session.account = jars[ACCOUNT_SITE]
+    }
+    if (!issued) {
+      ctx.host.log.warn("session refresh did not issue a service token")
+      throw accountLoginError()
+    }
+
+    ctx.host.log.info("console session refreshed from the account login")
+    session.cookie = jars[PLATFORM_SITE]
+    session.refreshed = true
+  }
+
+  // Refreshed sessions live in the plugin data dir, keyed to a fingerprint of
+  // the configured credentials so that pasting new ones discards them.
+  function authStorePath(ctx) {
+    return ctx.app.pluginDataDir + "/auth.json"
+  }
+
+  function fingerprint(text) {
+    let hash = 0x811c9dc5
+    for (let i = 0; i < text.length; i += 1) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193)
+    }
+    return (hash >>> 0).toString(16)
+  }
+
+  function loadStoredSession(ctx, sourceHash) {
+    const path = authStorePath(ctx)
+    try {
+      if (!ctx.host.fs.exists(path)) return null
+      const data = ctx.util.tryParseJson(ctx.host.fs.readText(path))
+      if (!data || typeof data !== "object" || data.sourceHash !== sourceHash) return null
+      return { cookie: readString(data.cookie), account: readString(data.accountCookie) }
+    } catch (e) {
+      ctx.host.log.warn("session store read failed: " + String(e))
+      return null
+    }
+  }
+
+  function saveStoredSession(ctx, session) {
+    try {
+      ctx.host.fs.writeText(
+        authStorePath(ctx),
+        JSON.stringify({
+          cookie: session.cookie,
+          accountCookie: session.account,
+          sourceHash: session.sourceHash,
+          updatedAt: ctx.nowIso,
+        })
+      )
+    } catch (e) {
+      ctx.host.log.warn("session store write failed: " + String(e))
+    }
+  }
+
+  function authError(session) {
+    if (session.account) return accountLoginError()
     return "MiMo login required. Copy fresh cookies from " + PLATFORM_URL + "."
   }
 
@@ -153,7 +370,7 @@
     )
   }
 
-  function requestJson(ctx, url, cookieHeader) {
+  function sendRequest(ctx, url, session) {
     let resp
     try {
       resp = ctx.util.request({
@@ -161,7 +378,7 @@
         url: url,
         headers: {
           Accept: "application/json",
-          Cookie: cookieHeader,
+          Cookie: session.cookie,
         },
         timeoutMs: 15000,
       })
@@ -169,22 +386,38 @@
       ctx.host.log.error("request exception for " + url + ": " + String(e))
       throw "Request failed. Check your connection."
     }
+    session.cookie = applySetCookies(session.cookie, resp)
 
-    if (ctx.util.isAuthStatus(resp.status)) throw authError()
+    const body = resp.status >= 200 && resp.status < 300 ? ctx.util.tryParseJson(resp.bodyText) : null
+    const code = body && typeof body === "object" ? readNumber(body.code) : null
+    const loggedOut = ctx.util.isAuthStatus(resp.status) || (code !== null && ctx.util.isAuthStatus(code))
+    return { resp: resp, body: body, code: code, loggedOut: loggedOut }
+  }
+
+  // A signed-out answer triggers one refresh from the account login, when one
+  // is configured, and a single retry.
+  function requestJson(ctx, url, session) {
+    let result = sendRequest(ctx, url, session)
+    if (result.loggedOut && session.account && !session.refreshed) {
+      refreshSession(ctx, session)
+      result = sendRequest(ctx, url, session)
+    }
+
+    const resp = result.resp
+    if (result.loggedOut) throw authError(session)
     if (resp.status < 200 || resp.status >= 300) {
       throw "MiMo request failed (HTTP " + String(resp.status) + "). Try again later."
     }
 
-    const body = ctx.util.tryParseJson(resp.bodyText)
+    const body = result.body
     if (!body || typeof body !== "object") {
       throw "Usage response invalid. Try again later."
     }
 
     // The console wraps payloads as { code: 0, message, data }. A non-zero code
     // is a business failure even when HTTP is 200.
-    const code = readNumber(body.code)
+    const code = result.code
     if (code !== null && code !== 0) {
-      if (ctx.util.isAuthStatus(code)) throw authError()
       const message = readString(body.message)
       throw message
         ? "MiMo API error: " + message
@@ -192,6 +425,30 @@
     }
 
     return body.data && typeof body.data === "object" ? body.data : body
+  }
+
+  function openSession(ctx, config) {
+    const consoleHeader = loadCookieHeader(ctx, config)
+    const accountHeader = loadAccountCookie(config, consoleHeader)
+    if (!consoleHeader && !accountHeader) throw missingCredentialsError()
+
+    const sourceHash = fingerprint((consoleHeader || "") + "\n" + (accountHeader || ""))
+    const stored = loadStoredSession(ctx, sourceHash)
+    const session = {
+      cookie: (stored && stored.cookie) || consoleHeader,
+      account: (stored && stored.account) || accountHeader,
+      sourceHash: sourceHash,
+      refreshed: false,
+    }
+    session.saved = { cookie: session.cookie, account: session.account }
+    if (!session.cookie) refreshSession(ctx, session)
+    return session
+  }
+
+  function persistSession(ctx, session) {
+    if (session.cookie === session.saved.cookie && session.account === session.saved.account) return
+    saveStoredSession(ctx, session)
+    session.saved = { cookie: session.cookie, account: session.account }
   }
 
   // The console reports a 0..1 fraction of the window consumed.
@@ -305,17 +562,23 @@
 
   function probe(ctx) {
     const config = loadConfig(ctx)
-    const cookieHeader = loadCookieHeader(ctx, config)
-    if (!cookieHeader) throw missingCredentialsError()
+    const session = openSession(ctx, config)
 
-    const usageData = requestJson(ctx, USAGE_URL, cookieHeader)
+    let usageData
+    try {
+      usageData = requestJson(ctx, USAGE_URL, session)
+    } finally {
+      persistSession(ctx, session)
+    }
 
     let detailData = null
     try {
-      detailData = requestJson(ctx, DETAIL_URL, cookieHeader)
+      detailData = requestJson(ctx, DETAIL_URL, session)
     } catch (e) {
-      if (typeof e === "string" && e.indexOf("login required") !== -1) throw e
+      if (typeof e === "string" && /login (required|expired)/.test(e)) throw e
       ctx.host.log.warn("detail request failed: " + String(e))
+    } finally {
+      persistSession(ctx, session)
     }
 
     const usageGroup = usageData.usage && typeof usageData.usage === "object" ? usageData.usage : {}

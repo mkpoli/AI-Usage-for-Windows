@@ -420,6 +420,9 @@ fn redact_url(url: &str) -> String {
         "session",
         "session_id",
         "sessionid",
+        "ticket",
+        "sign",
+        "nonce",
     ];
 
     if let Some(query_start) = url.find('?') {
@@ -519,6 +522,10 @@ fn redact_body(body: &str) -> String {
         "session_cookie",
         "sec_token",
         "secToken",
+        "passToken",
+        "serviceToken",
+        "accountCookie",
+        "account_cookie",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
@@ -3369,6 +3376,19 @@ mod tests {
     fn redact_url_preserves_non_sensitive_params() {
         let url = "https://api.example.com/v1?limit=10&offset=20";
         assert_eq!(redact_url(url), url);
+    }
+
+    #[test]
+    fn redact_url_redacts_passport_sts_params() {
+        let url = "https://platform.xiaomimimo.com/sts?sign=Cs997o94KEvlQZ0F&nonce=abcdefghijkl&clientSign=zyxwvutsrqpo&ticket=tk-1234567890";
+        let redacted = redact_url(url);
+        for secret in ["Cs997o94KEvlQZ0F", "abcdefghijkl", "zyxwvutsrqpo", "tk-1234567890"] {
+            assert!(
+                !redacted.contains(secret),
+                "Passport callback params should be redacted, got: {}",
+                redacted
+            );
+        }
     }
 
     #[test]
