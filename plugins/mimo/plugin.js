@@ -237,9 +237,11 @@
     return null
   }
 
-  // Cookies go only to the site that set them, and only over https.
+  // Cookies go only to the site that set them, and only over https. The host
+  // must be followed directly by a path, query or end, which rejects userinfo
+  // (`https://account.xiaomi.com@elsewhere/`) and non-default ports.
   function siteOf(url) {
-    const match = String(url).match(/^https:\/\/([^/?#:]+)/i)
+    const match = String(url).match(/^https:\/\/([a-z0-9.-]+)(?::443)?(?:[/?#]|$)/i)
     if (!match) return null
     const host = match[1].toLowerCase()
     if (host === ACCOUNT_SITE || /\.xiaomi\.com$/.test(host)) return ACCOUNT_SITE
@@ -286,11 +288,16 @@
       try {
         resp = ctx.util.request({ method: "GET", url: url, headers: headers, timeoutMs: 15000 })
       } catch (e) {
-        ctx.host.log.error("session refresh request to " + site + " failed: " + String(e))
+        // The error text can quote the URL, and the /sts URL carries a one-time ticket.
+        ctx.host.log.error(
+          "session refresh request to " + site + " failed: " + String(e).replace(/https?:\/\/\S+/g, "<url>")
+        )
         throw "Request failed. Check your connection."
       }
 
       jars[site] = applySetCookies(jars[site], resp)
+      // A rotated passToken is kept even when a later hop fails.
+      if (site === ACCOUNT_SITE && cookieJar(jars[site]).get("passToken")) session.account = jars[site]
       const token = cookieJar(jars[PLATFORM_SITE]).get(SERVICE_TOKEN_COOKIE)
       if (token && token !== previousToken) {
         issued = token
@@ -301,9 +308,6 @@
       url = location ? resolveLocation(location, url) : null
     }
 
-    if (jars[ACCOUNT_SITE] && jars[ACCOUNT_SITE] !== session.account) {
-      if (cookieJar(jars[ACCOUNT_SITE]).get("passToken")) session.account = jars[ACCOUNT_SITE]
-    }
     if (!issued) {
       ctx.host.log.warn("session refresh did not issue a service token")
       throw accountLoginError()
@@ -441,7 +445,13 @@
       refreshed: false,
     }
     session.saved = { cookie: session.cookie, account: session.account }
-    if (!session.cookie) refreshSession(ctx, session)
+    if (!session.cookie) {
+      try {
+        refreshSession(ctx, session)
+      } finally {
+        persistSession(ctx, session)
+      }
+    }
     return session
   }
 
