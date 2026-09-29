@@ -437,4 +437,166 @@ describe("mimo plugin", () => {
     expect(badges).toHaveLength(1)
     expect(badges[0]).toMatchObject({ label: "Status", text: "No usage data" })
   })
+
+  describe("account login refresh", () => {
+    const STORE = "/tmp/ai-usage-test/plugin/auth.json"
+    const ACCOUNT = "passToken=pt; userId=42"
+    const STS = "https://platform.xiaomimimo.com/sts?sign=s&followup=http%3A%2F%2Fplatform.xiaomimimo.com%2F&ticket=t"
+
+    function writeConfig(ctx, mimo) {
+      ctx.host.fs.writeText("~/.ai-usage/config.json", JSON.stringify({ mimo }))
+    }
+
+    // The console accepts only `validToken`; Passport answers with the sts
+    // redirect while the account login is valid, and with its login page
+    // otherwise.
+    function mockPassport(ctx, { validToken = "fresh", loginValid = true, usageSetCookie } = {}) {
+      ctx.host.http.request.mockImplementation((opts) => {
+        const url = String(opts.url)
+        const cookie = (opts.headers && opts.headers.Cookie) || ""
+        if (url.startsWith("https://account.xiaomi.com/pass/serviceLogin")) {
+          if (!loginValid) {
+            return {
+              status: 302,
+              headers: { location: "https://account.xiaomi.com/fe/service/login?sid=api-platform" },
+              bodyText: "",
+            }
+          }
+          return {
+            status: 302,
+            headers: { location: STS, "set-cookie": "passToken=pt2; Domain=.xiaomi.com; Path=/; HttpOnly" },
+            bodyText: "",
+          }
+        }
+        if (url.startsWith("https://account.xiaomi.com/")) {
+          return { status: 200, headers: {}, bodyText: "<html>login</html>" }
+        }
+        if (url.startsWith("https://platform.xiaomimimo.com/sts")) {
+          return {
+            status: 302,
+            headers: {
+              location: "http://platform.xiaomimimo.com/",
+              "set-cookie":
+                "api-platform_serviceToken=" + validToken + "; Path=/; HttpOnly\nuserId=42; Path=/",
+            },
+            bodyText: "",
+          }
+        }
+        if (url.indexOf("/tokenPlan/") !== -1) {
+          if (cookie.indexOf("api-platform_serviceToken=" + validToken) === -1) {
+            return { status: 401, headers: {}, bodyText: JSON.stringify({ code: 401 }) }
+          }
+          const data = url.indexOf("/usage") !== -1 ? USAGE : DETAIL
+          const headers = usageSetCookie ? { "set-cookie": usageSetCookie } : {}
+          return { status: 200, headers, bodyText: JSON.stringify({ code: 0, message: "ok", data }) }
+        }
+        return { status: 404, headers: {}, bodyText: "" }
+      })
+    }
+
+    const calls = (ctx) => ctx.host.http.request.mock.calls.map((c) => c[0])
+
+    it("refreshes an expired console cookie from the account login and retries", async () => {
+      const ctx = makeCtx()
+      writeConfig(ctx, { cookie: "api-platform_serviceToken=stale; userId=42", accountCookie: ACCOUNT })
+      mockPassport(ctx)
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.plan).toBe("Pro")
+
+      const sent = calls(ctx)
+      const login = sent.find((o) => o.url.startsWith("https://account.xiaomi.com/"))
+      expect(login.headers.Cookie).toBe(ACCOUNT)
+      const sts = sent.find((o) => o.url.startsWith("https://platform.xiaomimimo.com/sts"))
+      expect(sts.headers.Cookie).toBe("api-platform_serviceToken=stale; userId=42")
+      expect(sent.some((o) => o.url.startsWith("http://"))).toBe(false)
+
+      const usage = sent.filter((o) => o.url.indexOf("/tokenPlan/usage") !== -1)
+      expect(usage).toHaveLength(2)
+      expect(usage[1].headers.Cookie).toBe("api-platform_serviceToken=fresh; userId=42")
+
+      const stored = JSON.parse(ctx.host.fs.readText(STORE))
+      expect(stored.cookie).toBe("api-platform_serviceToken=fresh; userId=42")
+      expect(stored.accountCookie).toBe("passToken=pt2; userId=42")
+    })
+
+    it("reuses the stored session on the next probe", async () => {
+      const ctx = makeCtx()
+      writeConfig(ctx, { cookie: "api-platform_serviceToken=stale; userId=42", accountCookie: ACCOUNT })
+      mockPassport(ctx)
+
+      const plugin = await loadPlugin()
+      plugin.probe(ctx)
+      ctx.host.http.request.mockClear()
+      plugin.probe(ctx)
+
+      const sent = calls(ctx)
+      expect(sent.some((o) => o.url.startsWith("https://account.xiaomi.com/"))).toBe(false)
+      expect(sent[0].headers.Cookie).toBe("api-platform_serviceToken=fresh; userId=42")
+    })
+
+    it("signs in from the account cookie alone", async () => {
+      const ctx = makeCtx()
+      writeConfig(ctx, { accountCookie: "passToken\tpt\t.xiaomi.com\nuserId\t42\t.xiaomi.com" })
+      mockPassport(ctx)
+
+      const plugin = await loadPlugin()
+      expect(plugin.probe(ctx).plan).toBe("Pro")
+
+      const sent = calls(ctx)
+      expect(sent[0].url.startsWith("https://account.xiaomi.com/pass/serviceLogin")).toBe(true)
+      expect(sent[0].headers.Cookie).toBe("passToken=pt; userId=42")
+      expect(sent.filter((o) => o.url.indexOf("/tokenPlan/usage") !== -1)).toHaveLength(1)
+    })
+
+    it("takes userId from the console cookie when the account cookie lacks it", async () => {
+      const ctx = makeCtx()
+      writeConfig(ctx, { cookie: "api-platform_serviceToken=stale; userId=42", accountCookie: "passToken=pt" })
+      mockPassport(ctx)
+
+      const plugin = await loadPlugin()
+      plugin.probe(ctx)
+
+      const login = calls(ctx).find((o) => o.url.startsWith("https://account.xiaomi.com/"))
+      expect(login.headers.Cookie).toBe("passToken=pt; userId=42")
+    })
+
+    it("reports an expired account login when Passport asks to sign in", async () => {
+      const ctx = makeCtx()
+      writeConfig(ctx, { cookie: "api-platform_serviceToken=stale; userId=42", accountCookie: ACCOUNT })
+      mockPassport(ctx, { loginValid: false })
+
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("MiMo account login expired")
+    })
+
+    it("keeps cookies the console rotates on a normal response", async () => {
+      const ctx = makeCtx()
+      writeConfig(ctx, { cookie: "api-platform_serviceToken=fresh; userId=42; api-platform_ph=old" })
+      mockPassport(ctx, { usageSetCookie: "api-platform_ph=new; Path=/" })
+
+      const plugin = await loadPlugin()
+      plugin.probe(ctx)
+
+      const stored = JSON.parse(ctx.host.fs.readText(STORE))
+      expect(stored.cookie).toBe("api-platform_serviceToken=fresh; userId=42; api-platform_ph=new")
+      const detail = calls(ctx).find((o) => o.url.indexOf("/tokenPlan/detail") !== -1)
+      expect(detail.headers.Cookie).toBe(stored.cookie)
+    })
+
+    it("discards the stored session when the configured credentials change", async () => {
+      const ctx = makeCtx()
+      writeConfig(ctx, { cookie: "api-platform_serviceToken=fresh; userId=42" })
+      ctx.host.fs.writeText(
+        STORE,
+        JSON.stringify({ cookie: "api-platform_serviceToken=other", sourceHash: "stale-hash" })
+      )
+      mockPassport(ctx)
+
+      const plugin = await loadPlugin()
+      plugin.probe(ctx)
+      expect(calls(ctx)[0].headers.Cookie).toBe("api-platform_serviceToken=fresh; userId=42")
+    })
+  })
 })

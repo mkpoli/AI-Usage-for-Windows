@@ -86,7 +86,7 @@ Qwen covers two subscriptions: a Token Plan reporting the windows its spec meter
 | Grok | browser session cookie in `~/.ai-usage/config.json` | ○ | ○ |
 | Sakana AI | browser session cookie in `~/.ai-usage/config.json`, then self-renewing | ● | ○ |
 | Kimi | `~/.kimi-code/credentials/kimi-code.json` | ● | ○ |
-| MiMo | console session cookies in `~/.ai-usage/config.json` | ○ | ○ |
+| MiMo | Xiaomi account cookies or console session cookies in `~/.ai-usage/config.json`, re-signed from the account login | ● | ○ |
 | Qwen | console session cookies in `~/.ai-usage/config.json` | ○ | ○ |
 | Z.ai | `ZAI_API_KEY` environment variable, or `GLM_API_KEY` | not applicable, the API key is long-lived | ○ |
 | Antigravity | Antigravity desktop SQLite state, Cloud Code fallback | ● | ● |
@@ -277,7 +277,7 @@ Qwen은 두 가지 구독을 지원합니다. Token Plan은 해당 스펙이 측
 | Grok | `~/.ai-usage/config.json`에 넣은 브라우저 세션 쿠키 | ○ | ○ |
 | Sakana AI | `~/.ai-usage/config.json`에 넣은 브라우저 세션 쿠키, 이후 자동 연장 | ● | ○ |
 | Kimi | `~/.kimi-code/credentials/kimi-code.json` | ● | ○ |
-| MiMo | `~/.ai-usage/config.json`에 넣은 콘솔 세션 쿠키 | ○ | ○ |
+| MiMo | `~/.ai-usage/config.json`에 넣은 Xiaomi 계정 쿠키 또는 콘솔 세션 쿠키, 계정 로그인으로 재발급 | ● | ○ |
 | Qwen | `~/.ai-usage/config.json`에 넣은 콘솔 세션 쿠키 | ○ | ○ |
 | Z.ai | `ZAI_API_KEY` 환경 변수, 또는 `GLM_API_KEY` | 해당 없음, API 키는 만료되지 않음 | ○ |
 | Antigravity | Antigravity 데스크톱 SQLite state, Cloud Code fallback | ● | ● |
