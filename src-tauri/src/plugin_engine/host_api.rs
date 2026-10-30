@@ -2245,9 +2245,10 @@ fn ccusage_wsl_script(
 
     Some(format!(
         concat!(
-            r#"if [ -x "$HOME/.bun/bin/bunx" ]; then exec nice -n 19 env {env}"$HOME/.bun/bin/bunx"{bun_tail}; "#,
-            "elif command -v bunx >/dev/null 2>&1; then exec nice -n 19 env {env}{bunx}; ",
-            "elif command -v npx >/dev/null 2>&1; then exec nice -n 19 env {env}{npx}; ",
+            "low=; if command -v nice >/dev/null 2>&1; then low='nice -n 19'; fi; ",
+            r#"if [ -x "$HOME/.bun/bin/bunx" ]; then exec $low env {env}"$HOME/.bun/bin/bunx"{bun_tail}; "#,
+            "elif command -v bunx >/dev/null 2>&1; then exec $low env {env}{bunx}; ",
+            "elif command -v npx >/dev/null 2>&1; then exec $low env {env}{npx}; ",
             "else exit 127; fi"
         ),
         env = env_assignment,
@@ -3790,7 +3791,8 @@ mod tests {
         let script =
             ccusage_wsl_script(&wsl, &opts, CcusageProvider::Claude).expect("script built");
         assert!(script.contains(r#"[ -x "$HOME/.bun/bin/bunx" ]"#));
-        assert!(script.contains(r#"exec nice -n 19 env "$HOME/.bun/bin/bunx""#));
+        assert!(script.starts_with("low=; if command -v nice >/dev/null 2>&1; then low='nice -n 19'; fi; "));
+        assert!(script.contains(r#"exec $low env "$HOME/.bun/bin/bunx""#));
         assert!(script.contains("command -v npx"));
         assert!(script.contains("'--since' '20260101'"));
         // Without an override the CLI inside the distro finds its own home.
