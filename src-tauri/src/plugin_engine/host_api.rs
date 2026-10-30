@@ -2277,6 +2277,56 @@ fn run_ccusage_in_wsl(
     run_ccusage_command(command, "wsl", plugin_id, CCUSAGE_WSL_TIMEOUT_SECS)
 }
 
+/// Ends a ccusage run's whole process tree when dropped, and when the app exits. A runner such as
+/// `bunx.exe` starts the scan in a child `node.exe`, which outlives a kill of the runner alone and
+/// keeps reading gigabytes of transcripts.
+#[cfg(target_os = "windows")]
+struct CcusageProcessTree(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(target_os = "windows")]
+impl CcusageProcessTree {
+    fn attach(child: &std::process::Child) -> Option<Self> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
+        };
+
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if job.is_null() {
+            log::warn!("[ccusage] job object creation failed: {}", windows_last_error_message());
+            return None;
+        }
+        let tree = Self(job);
+
+        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = unsafe {
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        let assigned =
+            configured != 0 && unsafe { AssignProcessToJobObject(job, child.as_raw_handle()) } != 0;
+        if !assigned {
+            log::warn!("[ccusage] job object setup failed: {}", windows_last_error_message());
+            return None;
+        }
+        Some(tree)
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for CcusageProcessTree {
+    fn drop(&mut self) {
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0) };
+    }
+}
+
 fn run_ccusage_command(
     mut command: std::process::Command,
     label: &str,
@@ -2295,6 +2345,8 @@ fn run_ccusage_command(
             return None;
         }
     };
+    #[cfg(target_os = "windows")]
+    let _tree = CcusageProcessTree::attach(&child);
 
     // Drain pipes concurrently while the process is running so the child cannot block on full
     // stdout/stderr buffers before exit.
