@@ -1669,10 +1669,11 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
 const CCUSAGE_VERSION: &str = "18.0.10";
 const CCUSAGE_CLAUDE_PACKAGE_NAME: &str = "ccusage";
 const CCUSAGE_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
-// Scanning a large transcript history takes far longer than a probe interval — around a minute for
-// a few gigabytes — so a query runs on its own thread and probes read the last answer it stored.
-const CCUSAGE_TIMEOUT_SECS: u64 = 180;
+// Scanning a large transcript history takes far longer than a probe interval — minutes for a few
+// gigabytes — so a query runs on its own thread and probes read the last answer it stored. Only one
+// run per query is in flight, so a run may take as long as its answer is held.
 const CCUSAGE_CACHE_TTL_SECS: u64 = 30 * 60;
+const CCUSAGE_TIMEOUT_SECS: u64 = CCUSAGE_CACHE_TTL_SECS;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
 
 #[derive(Clone, Default, serde::Deserialize)]
@@ -1725,8 +1726,6 @@ struct CcusageProviderConfig {
     package_name: &'static str,
     npm_exec_bin: &'static str,
     home_env_var: &'static str,
-    /// Where the CLI keeps its state when nothing overrides it.
-    default_home: &'static str,
 }
 
 fn parse_ccusage_provider(value: &str) -> Option<CcusageProvider> {
@@ -1755,13 +1754,11 @@ fn ccusage_provider_config(provider: CcusageProvider) -> CcusageProviderConfig {
             package_name: CCUSAGE_CLAUDE_PACKAGE_NAME,
             npm_exec_bin: "ccusage",
             home_env_var: "CLAUDE_CONFIG_DIR",
-            default_home: "~/.claude",
         },
         CcusageProvider::Codex => CcusageProviderConfig {
             package_name: CCUSAGE_CODEX_PACKAGE_NAME,
             npm_exec_bin: "ccusage-codex",
             home_env_var: "CODEX_HOME",
-            default_home: "~/.codex",
         },
     }
 }
@@ -2115,11 +2112,9 @@ fn run_ccusage_with_runner(
     let mut command = std::process::Command::new(program);
     configure_ccusage_command(&mut command, &args, enriched_path.as_deref());
 
-    // A Windows runner reading a WSL environment needs the distro's path spelled out; ccusage's
-    // own default would land in the Windows profile and report the wrong machine's history.
-    if let Some(home_path) = ccusage_windows_home(opts, provider) {
+    if let Some(home_path) = ccusage_home_override(opts, provider) {
         let config = ccusage_provider_config(provider);
-        command.env(config.home_env_var, home_path);
+        command.env(config.home_env_var, expand_path(home_path));
     }
 
     let redacted_program = redact_log_message(program);
@@ -2174,10 +2169,10 @@ fn run_ccusage_query(
     provider: CcusageProvider,
     plugin_id: &str,
 ) -> Option<String> {
+    // With a distro selected, a failed run keeps the previous answer: a Windows runner would read
+    // the same transcripts across the 9p bridge, which takes the whole machine down with it.
     if let Some(wsl) = crate::cli_environment::active_wsl() {
-        if let Some(result) = run_ccusage_in_wsl(&wsl, opts, provider, plugin_id) {
-            return Some(result);
-        }
+        return run_ccusage_in_wsl(&wsl, opts, provider, plugin_id);
     }
 
     let runners = collect_ccusage_runners();
@@ -2197,17 +2192,6 @@ fn run_ccusage_query(
         plugin_id
     );
     None
-}
-
-/// The home a Windows-side ccusage run should read, expanded through the active CLI environment.
-fn ccusage_windows_home(opts: &CcusageQueryOpts, provider: CcusageProvider) -> Option<String> {
-    if let Some(home_path) = ccusage_home_override(opts, provider) {
-        return Some(expand_path(home_path));
-    }
-    if crate::cli_environment::active_wsl().is_none() {
-        return None;
-    }
-    Some(expand_path(ccusage_provider_config(provider).default_home))
 }
 
 /// Quotes a value for a POSIX shell.
