@@ -29,12 +29,13 @@ Windows Credential Manager is a Windows facility and is read there in every case
 
 `ccusage` reads a CLI's transcripts. With a distro selected it runs only inside that distro, where
 those files are local; running it from Windows would drag gigabytes across the 9p bridge and load
-the whole machine. A run that fails there leaves the last answer in place.
+the whole machine. A run that fails there keeps the last answer on the card. A home override that
+points into the Windows profile, such as `CODEX_HOME=C:\Users\you\.codex`, is read from Windows.
 
 A large history takes far longer than a refresh interval — several minutes for a few gigabytes — so
 the query runs on its own thread and each refresh reads the answer from the last completed run.
-Results are held for 30 minutes, and a run may take as long. Until the first run finishes, a provider
-card shows its API-based lines and no token history.
+Results are held for 30 minutes, and a run inside a distro may take as long. Until the first run
+finishes, a provider card shows its API-based lines and no token history.
 
 ## When a distro is gone
 

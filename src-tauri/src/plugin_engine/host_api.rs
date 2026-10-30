@@ -1670,10 +1670,12 @@ const CCUSAGE_VERSION: &str = "18.0.10";
 const CCUSAGE_CLAUDE_PACKAGE_NAME: &str = "ccusage";
 const CCUSAGE_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
 // Scanning a large transcript history takes far longer than a probe interval — minutes for a few
-// gigabytes — so a query runs on its own thread and probes read the last answer it stored. Only one
-// run per query is in flight, so a run may take as long as its answer is held.
+// gigabytes — so a query runs on its own thread and probes read the last answer it stored.
+const CCUSAGE_TIMEOUT_SECS: u64 = 180;
 const CCUSAGE_CACHE_TTL_SECS: u64 = 30 * 60;
-const CCUSAGE_TIMEOUT_SECS: u64 = CCUSAGE_CACHE_TTL_SECS;
+// A run inside a distro has no runner to fall back to, and only one run per query is in flight, so
+// it may take as long as its answer is held.
+const CCUSAGE_WSL_TIMEOUT_SECS: u64 = CCUSAGE_CACHE_TTL_SECS;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
 
 #[derive(Clone, Default, serde::Deserialize)]
@@ -2170,9 +2172,17 @@ fn run_ccusage_query(
     plugin_id: &str,
 ) -> Option<String> {
     // With a distro selected, a failed run keeps the previous answer: a Windows runner would read
-    // the same transcripts across the 9p bridge, which takes the whole machine down with it.
+    // the same transcripts across the 9p bridge, which takes the whole machine down with it. A home
+    // override that maps outside the distro lives on Windows, where a Windows runner reads it locally.
     if let Some(wsl) = crate::cli_environment::active_wsl() {
-        return run_ccusage_in_wsl(&wsl, opts, provider, plugin_id);
+        match ccusage_wsl_script(&wsl, opts, provider) {
+            Some(script) => return run_ccusage_in_wsl(&wsl, &script, plugin_id),
+            None => log::info!(
+                "[plugin:{}] ccusage home override lies outside WSL distro {}; reading it from Windows",
+                plugin_id,
+                wsl.distro
+            ),
+        }
     }
 
     let runners = collect_ccusage_runners();
@@ -2247,14 +2257,12 @@ fn ccusage_wsl_script(
 /// reached across the 9p bridge.
 fn run_ccusage_in_wsl(
     wsl: &crate::cli_environment::WslEnvironment,
-    opts: &CcusageQueryOpts,
-    provider: CcusageProvider,
+    script: &str,
     plugin_id: &str,
 ) -> Option<String> {
-    let script = ccusage_wsl_script(wsl, opts, provider)?;
     let mut command = std::process::Command::new("wsl.exe");
     command
-        .args(["-d", wsl.distro.as_str(), "-e", "sh", "-lc", script.as_str()])
+        .args(["-d", wsl.distro.as_str(), "-e", "sh", "-lc", script])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -2266,7 +2274,7 @@ fn run_ccusage_in_wsl(
         wsl.distro
     );
 
-    run_ccusage_command(command, "wsl", plugin_id, CCUSAGE_TIMEOUT_SECS)
+    run_ccusage_command(command, "wsl", plugin_id, CCUSAGE_WSL_TIMEOUT_SECS)
 }
 
 fn run_ccusage_command(
