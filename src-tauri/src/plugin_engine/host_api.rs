@@ -15,6 +15,8 @@ use std::sync::{Mutex, OnceLock};
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+#[cfg(target_os = "windows")]
+const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x00004000;
 
 const WHITELISTED_ENV_VARS: [&str; 25] = [
     "CODEX_HOME",
@@ -1968,7 +1970,9 @@ fn configure_ccusage_command(
     command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    configure_hidden_command_window(command);
+    // A scan can keep several cores busy for minutes; the processes it starts inherit this class.
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
 }
 
 fn resolve_ccusage_runner_binary(kind: CcusageRunnerKind) -> Option<String> {
@@ -2218,8 +2222,8 @@ fn shell_command_line(program: &str, args: &[String]) -> String {
     line
 }
 
-/// Builds the shell script that runs ccusage inside a distro, preferring bun and falling back to
-/// npx. `$HOME/.bun/bin` is probed directly because a login shell does not always carry it.
+/// Builds the shell script that runs ccusage inside a distro at the lowest CPU priority, preferring
+/// bun and falling back to npx. `$HOME/.bun/bin` is probed directly because a login shell does not always carry it.
 fn ccusage_wsl_script(
     wsl: &crate::cli_environment::WslEnvironment,
     opts: &CcusageQueryOpts,
@@ -2241,9 +2245,9 @@ fn ccusage_wsl_script(
 
     Some(format!(
         concat!(
-            r#"if [ -x "$HOME/.bun/bin/bunx" ]; then exec env {env}"$HOME/.bun/bin/bunx"{bun_tail}; "#,
-            "elif command -v bunx >/dev/null 2>&1; then exec env {env}{bunx}; ",
-            "elif command -v npx >/dev/null 2>&1; then exec env {env}{npx}; ",
+            r#"if [ -x "$HOME/.bun/bin/bunx" ]; then exec nice -n 19 env {env}"$HOME/.bun/bin/bunx"{bun_tail}; "#,
+            "elif command -v bunx >/dev/null 2>&1; then exec nice -n 19 env {env}{bunx}; ",
+            "elif command -v npx >/dev/null 2>&1; then exec nice -n 19 env {env}{npx}; ",
             "else exit 127; fi"
         ),
         env = env_assignment,
@@ -3755,6 +3759,22 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn ccusage_runner_starts_below_normal_priority() {
+        use std::os::windows::io::AsRawHandle;
+
+        let mut command = std::process::Command::new("cmd.exe");
+        let args = vec!["/c".to_string(), "ping -n 3 127.0.0.1".to_string()];
+        configure_ccusage_command(&mut command, &args, None);
+        let mut child = command.spawn().expect("spawn runner");
+        let class =
+            unsafe { windows_sys::Win32::System::Threading::GetPriorityClass(child.as_raw_handle()) };
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_eq!(class, BELOW_NORMAL_PRIORITY_CLASS);
+    }
+
     #[test]
     fn ccusage_wsl_script_prefers_bun_and_falls_back_to_npx() {
         let wsl = crate::cli_environment::WslEnvironment {
@@ -3770,6 +3790,7 @@ mod tests {
         let script =
             ccusage_wsl_script(&wsl, &opts, CcusageProvider::Claude).expect("script built");
         assert!(script.contains(r#"[ -x "$HOME/.bun/bin/bunx" ]"#));
+        assert!(script.contains(r#"exec nice -n 19 env "$HOME/.bun/bin/bunx""#));
         assert!(script.contains("command -v npx"));
         assert!(script.contains("'--since' '20260101'"));
         // Without an override the CLI inside the distro finds its own home.
