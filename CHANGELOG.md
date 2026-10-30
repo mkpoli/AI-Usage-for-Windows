@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.8.0 - 2026-10-30
+
+### Added
+
+- MiMo signs in to the console again on its own. The console session cookie expires quickly, while the Xiaomi account login behind it lasts much longer. With `passToken` and `userId` from `account.xiaomi.com` saved as `mimo.accountCookie` in `~/.ai-usage/config.json`, the app gets a fresh console session through Xiaomi Passport whenever the old one runs out, and keeps it in the plugin's data folder. Console cookies alone still work until they expire. See [docs/providers/mimo.md](docs/providers/mimo.md).
+
+### Fixed
+
+- The MiMo sign-in sends `passToken` only to Xiaomi hosts. A redirect whose address only looked like a Xiaomi host, by way of a user-info prefix or a port, could receive it. The one-time sign-in ticket stays out of `AI Usage.log`, and a new `passToken` that Xiaomi issues during sign-in is kept even when a later step fails.
+
+- With a WSL distro selected, token history could slow the whole machine down. A `ccusage` run inside the distro that passed 180 seconds was retried from Windows, which read the same gigabytes of transcripts through `\\wsl.localhost`. The WSL file server then sat at one to two cores, and each refresh started the retry again. A large Codex history takes several minutes to scan even inside the distro. Runs now stay in the distro and may take up to 30 minutes, the time their answer is kept, and a failed run leaves the last answer on the card. A home override that points into the Windows profile is still read from Windows, where the files are local.
+
+- A token-history scan could outlive its run and the app. A timeout stopped only `bunx.exe` or `wsl.exe` and then waited for the scan they had started, and quitting the app stopped neither, so the scan went on reading transcripts for minutes. Each run's processes now end together when the run finishes, times out, or the app exits.
+
 ## v0.7.2 - 2026-09-24
 
 ### Fixed
