@@ -2277,9 +2277,10 @@ fn run_ccusage_in_wsl(
     run_ccusage_command(command, "wsl", plugin_id, CCUSAGE_WSL_TIMEOUT_SECS)
 }
 
-/// Ends a ccusage run's whole process tree when dropped, and when the app exits. A runner such as
+/// Ends a ccusage run's process tree when dropped, and when the app exits. A runner such as
 /// `bunx.exe` starts the scan in a child `node.exe`, which outlives a kill of the runner alone and
-/// keeps reading gigabytes of transcripts.
+/// keeps reading gigabytes of transcripts; ending `wsl.exe` ends the scan it relays. A process the
+/// runner starts in the instant before it joins the job stays outside it.
 #[cfg(target_os = "windows")]
 struct CcusageProcessTree(windows_sys::Win32::Foundation::HANDLE);
 
@@ -2346,7 +2347,7 @@ fn run_ccusage_command(
         }
     };
     #[cfg(target_os = "windows")]
-    let _tree = CcusageProcessTree::attach(&child);
+    let tree = CcusageProcessTree::attach(&child);
 
     // Drain pipes concurrently while the process is running so the child cannot block on full
     // stdout/stderr buffers before exit.
@@ -2403,6 +2404,10 @@ fn run_ccusage_command(
             }
             Ok(None) => {
                 if start.elapsed() > timeout {
+                    // A surviving descendant holds the output pipes open, so the tree has to end
+                    // before the readers can finish.
+                    #[cfg(target_os = "windows")]
+                    drop(tree);
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
@@ -3726,6 +3731,27 @@ mod tests {
                 CcusageRunnerKind::NpmExec,
                 CcusageRunnerKind::Npx
             ]
+        );
+    }
+
+    /// `cmd.exe` stands in for a runner whose scan runs in a grandchild that holds the output pipes.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn ccusage_timeout_ends_the_runner_descendants() {
+        let mut command = std::process::Command::new("cmd.exe");
+        command
+            .args(["/c", "ping -n 60 127.0.0.1"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        configure_hidden_command_window(&mut command);
+
+        let start = std::time::Instant::now();
+        assert_eq!(run_ccusage_command(command, "test", "test", 1), None);
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(15),
+            "timed-out run returned after {:?}",
+            start.elapsed()
         );
     }
 
