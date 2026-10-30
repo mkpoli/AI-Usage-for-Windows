@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.1 - 2026-10-30
+
+### Fixed
+
+- Token-history scans run at the lowest CPU priority. A scan of a few gigabytes of transcripts keeps several cores busy for minutes and repeats every 30 minutes, which made the rest of the machine feel slow. Inside a WSL distro it runs under `nice -n 19`, or at normal priority on a distro without `nice`. On Windows it starts below normal priority, and the processes it launches inherit that.
+
 ## v0.8.0 - 2026-10-30
 
 ### Added
