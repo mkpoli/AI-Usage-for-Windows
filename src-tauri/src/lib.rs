@@ -346,6 +346,12 @@ fn set_local_http_api_enabled(enabled: bool) -> Result<bool, String> {
     Ok(true)
 }
 
+/// Turn token history on or off. Off stops every ccusage run and drops cached results.
+#[tauri::command]
+fn set_token_history_enabled(enabled: bool) {
+    plugin_engine::host_api::set_token_history_enabled(enabled);
+}
+
 /// Whether the loopback usage API is serving right now.
 #[tauri::command]
 fn is_local_http_api_running() -> bool {
@@ -508,7 +514,8 @@ pub fn run() {
             list_wsl_distros,
             set_cli_environment,
             set_local_http_api_enabled,
-            is_local_http_api_running
+            is_local_http_api_running,
+            set_token_history_enabled
         ])
         .setup(|app| {
             use tauri::Manager;
@@ -565,6 +572,9 @@ pub fn run() {
             }));
 
             local_http_api::init(&app_data_dir, plugin_metrics);
+            plugin_engine::host_api::set_token_history_enabled(
+                local_http_api::is_token_history_enabled(&app_data_dir),
+            );
             if local_http_api::is_enabled_in_settings(&app_data_dir) {
                 if let Err(e) = local_http_api::start_server() {
                     log::warn!("local HTTP API could not start: {}", e);

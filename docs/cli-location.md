@@ -27,6 +27,14 @@ Windows Credential Manager is a Windows facility and is read there in every case
 
 ## Token history
 
+Token history is off until you turn it on in Settings. The choice is `tokenHistory` in
+`settings.json`, and the app reads it again on every launch.
+
+Each run reads every Claude Code and Codex transcript. A large history takes many minutes and
+several cores. With the switch off, a refresh starts no scan and the card leaves token lines out.
+Turning the switch off stops a scan already running and drops the result it was holding. Turning it
+on lets the next refresh start a run.
+
 `ccusage` reads a CLI's transcripts. With a distro selected it runs only inside that distro, where
 those files are local; running it from Windows would drag gigabytes across the 9p bridge and load
 the whole machine. A run that fails there keeps the last answer on the card. A home override that

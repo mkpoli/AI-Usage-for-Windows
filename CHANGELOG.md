@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Token history stays off until you turn it on in Settings. A run reads every Claude Code and Codex transcript, and a large history takes many minutes and several cores. Turning it off stops a scan already running and drops the result it was holding. See [docs/cli-location.md](docs/cli-location.md).
+
 ## v0.8.1 - 2026-10-30
 
 ### Fixed

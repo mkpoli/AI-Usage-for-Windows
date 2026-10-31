@@ -62,6 +62,7 @@ function App() {
     setWslDistros,
     setLocalHttpApi,
     setLocalHttpApiError,
+    setTokenHistory,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -80,6 +81,7 @@ function App() {
       setWslDistros: state.setWslDistros,
       setLocalHttpApi: state.setLocalHttpApi,
       setLocalHttpApiError: state.setLocalHttpApiError,
+      setTokenHistory: state.setTokenHistory,
     }))
   )
 
@@ -132,6 +134,7 @@ function App() {
     setWslDistros,
     setLocalHttpApi,
     setLocalHttpApiError,
+    setTokenHistory,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
@@ -169,6 +172,7 @@ function App() {
     handleGlobalShortcutChange,
     handleStartOnLoginChange,
     handleLocalHttpApiChange,
+    handleTokenHistoryChange,
     handleCliEnvironmentChange,
   } = useSettingsSystemActions({
     pluginSettings,
@@ -179,6 +183,7 @@ function App() {
     setCliEnvironment,
     setLocalHttpApi,
     setLocalHttpApiError,
+    setTokenHistory,
     refreshEnabledPlugins,
     applyStartOnLogin,
   })
@@ -278,6 +283,7 @@ function App() {
         onStartOnLoginChange: handleStartOnLoginChange,
         onCliEnvironmentChange: handleCliEnvironmentChange,
         onLocalHttpApiChange: handleLocalHttpApiChange,
+        onTokenHistoryChange: handleTokenHistoryChange,
       }}
     />
   )

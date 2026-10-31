@@ -34,6 +34,7 @@ export type AppContentActionProps = {
   onStartOnLoginChange: (value: boolean) => void
   onCliEnvironmentChange: (value: CliEnvironment) => void
   onLocalHttpApiChange: (value: boolean) => void
+  onTokenHistoryChange: (value: boolean) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -54,6 +55,7 @@ export function AppContent({
   onStartOnLoginChange,
   onCliEnvironmentChange,
   onLocalHttpApiChange,
+  onTokenHistoryChange,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -72,6 +74,7 @@ export function AppContent({
     wslDistros,
     localHttpApi,
     localHttpApiError,
+    tokenHistory,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       displayMode: state.displayMode,
@@ -84,6 +87,7 @@ export function AppContent({
       wslDistros: state.wslDistros,
       localHttpApi: state.localHttpApi,
       localHttpApiError: state.localHttpApiError,
+      tokenHistory: state.tokenHistory,
     }))
   )
 
@@ -123,6 +127,8 @@ export function AppContent({
         localHttpApi={localHttpApi}
         localHttpApiError={localHttpApiError}
         onLocalHttpApiChange={onLocalHttpApiChange}
+        tokenHistory={tokenHistory}
+        onTokenHistoryChange={onTokenHistoryChange}
       />
     )
   }

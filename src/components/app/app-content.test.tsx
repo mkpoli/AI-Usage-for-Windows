@@ -64,6 +64,9 @@ function createProps(): AppContentProps {
     onResetTimerDisplayModeToggle: vi.fn(),
     onGlobalShortcutChange: vi.fn(),
     onStartOnLoginChange: vi.fn(),
+    onCliEnvironmentChange: vi.fn(),
+    onLocalHttpApiChange: vi.fn(),
+    onTokenHistoryChange: vi.fn(),
   }
 }
 
@@ -90,6 +93,20 @@ describe("AppContent", () => {
 
     expect(screen.getByTestId("settings-page")).toBeInTheDocument()
     expect(settingsPageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("gives settings the token history switch", () => {
+    useAppUiStore.getState().setActiveView("settings")
+    useAppPreferencesStore.getState().setTokenHistory(true)
+    const onTokenHistoryChange = vi.fn()
+    render(<AppContent {...createProps()} onTokenHistoryChange={onTokenHistoryChange} />)
+
+    expect(settingsPageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tokenHistory: true,
+        onTokenHistoryChange,
+      })
+    )
   })
 
   it("passes retry callback for provider detail view", () => {

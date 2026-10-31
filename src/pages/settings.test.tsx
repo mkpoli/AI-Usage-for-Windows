@@ -66,6 +66,8 @@ const defaultProps = {
   localHttpApi: false,
   localHttpApiError: null as string | null,
   onLocalHttpApiChange: vi.fn(),
+  tokenHistory: false,
+  onTokenHistoryChange: vi.fn(),
 }
 
 afterEach(() => {
@@ -249,6 +251,29 @@ describe("SettingsPage", () => {
     expect(screen.getByText(/Logins are read from Ubuntu/)).toBeTruthy()
   })
 
+
+  it("describes what token history costs and starts off", () => {
+    render(<SettingsPage {...defaultProps} tokenHistory={false} />)
+
+    expect(
+      screen.getByText(
+        "Token history reads every Claude Code and Codex transcript on each run, and a large history takes many minutes and several cores."
+      )
+    ).toBeInTheDocument()
+    const tokenHistory = screen.getByLabelText("Token history")
+    expect(tokenHistory.querySelector('[role="checkbox"]') ?? tokenHistory).not.toBeChecked()
+  })
+
+  it("reports the token history toggle", async () => {
+    const onTokenHistoryChange = vi.fn()
+    render(
+      <SettingsPage {...defaultProps} onTokenHistoryChange={onTokenHistoryChange} />
+    )
+
+    const tokenHistory = screen.getByLabelText("Token history")
+    await userEvent.click(tokenHistory.querySelector('[role="checkbox"]') ?? tokenHistory)
+    expect(onTokenHistoryChange).toHaveBeenCalledWith(true)
+  })
 
   it("says nothing listens while the loopback API is off", () => {
     render(<SettingsPage {...defaultProps} localHttpApi={false} />)

@@ -11,7 +11,8 @@ use std::ffi::{OsStr, OsString};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -2112,6 +2113,7 @@ fn run_ccusage_with_runner(
     opts: &CcusageQueryOpts,
     provider: CcusageProvider,
     plugin_id: &str,
+    run: &CcusageRun,
 ) -> Option<String> {
     let args = ccusage_runner_args(kind, opts, provider);
     let enriched_path = ccusage_enriched_path();
@@ -2132,13 +2134,116 @@ fn run_ccusage_with_runner(
         redacted_program
     );
 
-    run_ccusage_command(command, ccusage_runner_label(kind), plugin_id, CCUSAGE_TIMEOUT_SECS)
+    run_ccusage_command(
+        command,
+        ccusage_runner_label(kind),
+        plugin_id,
+        CCUSAGE_TIMEOUT_SECS,
+        run,
+    )
 }
 
 struct CcusageCacheEntry {
     payload: Option<String>,
     stored_at: std::time::Instant,
     running: bool,
+    /// Identifies the run that owns this entry, so a cancelled run cannot clear a newer one.
+    run: u64,
+}
+
+/// A ccusage process tree the Token history switch can end. The wait loop treats `cancel` the same
+/// way it treats a timeout: drop the job object, then kill the child.
+struct CcusageRun {
+    cancel: AtomicBool,
+}
+
+impl CcusageRun {
+    fn fresh() -> Self {
+        Self {
+            cancel: AtomicBool::new(false),
+        }
+    }
+}
+
+fn ccusage_runs() -> &'static Mutex<Vec<Weak<CcusageRun>>> {
+    static RUNS: OnceLock<Mutex<Vec<Weak<CcusageRun>>>> = OnceLock::new();
+    RUNS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn register_ccusage_run() -> Arc<CcusageRun> {
+    let run = Arc::new(CcusageRun::fresh());
+    let mut runs = match ccusage_runs().lock() {
+        Ok(runs) => runs,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    runs.retain(|run| run.strong_count() > 0);
+    runs.push(Arc::downgrade(&run));
+    run
+}
+
+fn cancel_ccusage_runs() {
+    let runs = match ccusage_runs().lock() {
+        Ok(runs) => runs,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    for run in runs.iter() {
+        if let Some(run) = run.upgrade() {
+            run.cancel.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
+static TOKEN_HISTORY_ENABLED: AtomicBool = AtomicBool::new(false);
+static NEXT_CCUSAGE_RUN: AtomicU64 = AtomicU64::new(1);
+
+fn token_history_enabled() -> bool {
+    TOKEN_HISTORY_ENABLED.load(Ordering::SeqCst)
+}
+
+fn next_ccusage_run_id() -> u64 {
+    NEXT_CCUSAGE_RUN.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Applies the Token history switch. Off ends every ccusage run in progress and drops cached results.
+/// On lets the next query start a run.
+pub fn set_token_history_enabled(enabled: bool) {
+    TOKEN_HISTORY_ENABLED.store(enabled, Ordering::SeqCst);
+    if enabled {
+        log::info!("token history on");
+        return;
+    }
+    log::info!("token history off");
+    cancel_ccusage_runs();
+    let mut cache = match ccusage_cache().lock() {
+        Ok(cache) => cache,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    cache.clear();
+}
+
+fn finish_ccusage_run(key: &str, run_id: u64, result: Option<String>, run: &CcusageRun) {
+    let mut cache = match ccusage_cache().lock() {
+        Ok(cache) => cache,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let owns = cache
+        .get(key)
+        .is_some_and(|entry| entry.run == run_id);
+    if !owns {
+        return;
+    }
+    if run.cancel.load(Ordering::SeqCst) || !token_history_enabled() {
+        cache.remove(key);
+        return;
+    }
+    if let Some(entry) = cache.get_mut(key) {
+        entry.running = false;
+        // A failed run keeps the previous answer rather than blanking the card.
+        if result.is_some() {
+            entry.payload = result;
+        }
+        entry.stored_at = std::time::Instant::now();
+    }
 }
 
 fn ccusage_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, CcusageCacheEntry>>
@@ -2174,13 +2279,17 @@ fn run_ccusage_query(
     opts: &CcusageQueryOpts,
     provider: CcusageProvider,
     plugin_id: &str,
+    run: &CcusageRun,
 ) -> Option<String> {
+    if run.cancel.load(Ordering::SeqCst) {
+        return None;
+    }
     // With a distro selected, a failed run keeps the previous answer: a Windows runner would read
     // the same transcripts across the 9p bridge, which takes the whole machine down with it. A home
     // override that maps outside the distro lives on Windows, where a Windows runner reads it locally.
     if let Some(wsl) = crate::cli_environment::active_wsl() {
         match ccusage_wsl_script(&wsl, opts, provider) {
-            Some(script) => return run_ccusage_in_wsl(&wsl, &script, plugin_id),
+            Some(script) => return run_ccusage_in_wsl(&wsl, &script, plugin_id, run),
             None => log::info!(
                 "[plugin:{}] ccusage home override lies outside WSL distro {}; reading it from Windows",
                 plugin_id,
@@ -2196,8 +2305,16 @@ fn run_ccusage_query(
     }
 
     for (kind, program) in runners {
-        if let Some(result) = run_ccusage_with_runner(kind, &program, opts, provider, plugin_id) {
+        if run.cancel.load(Ordering::SeqCst) {
+            return None;
+        }
+        if let Some(result) =
+            run_ccusage_with_runner(kind, &program, opts, provider, plugin_id, run)
+        {
             return Some(result);
+        }
+        if run.cancel.load(Ordering::SeqCst) {
+            return None;
         }
     }
 
@@ -2264,6 +2381,7 @@ fn run_ccusage_in_wsl(
     wsl: &crate::cli_environment::WslEnvironment,
     script: &str,
     plugin_id: &str,
+    run: &CcusageRun,
 ) -> Option<String> {
     let mut command = std::process::Command::new("wsl.exe");
     command
@@ -2279,7 +2397,7 @@ fn run_ccusage_in_wsl(
         wsl.distro
     );
 
-    run_ccusage_command(command, "wsl", plugin_id, CCUSAGE_WSL_TIMEOUT_SECS)
+    run_ccusage_command(command, "wsl", plugin_id, CCUSAGE_WSL_TIMEOUT_SECS, run)
 }
 
 /// Ends a ccusage run's process tree when dropped, and when the app exits. A runner such as
@@ -2338,7 +2456,15 @@ fn run_ccusage_command(
     label: &str,
     plugin_id: &str,
     timeout_secs: u64,
+    run: &CcusageRun,
 ) -> Option<String> {
+    if run.cancel.load(Ordering::SeqCst) {
+        log::info!(
+            "[plugin:{}] ccusage stopped because token history is off",
+            plugin_id
+        );
+        return None;
+    }
     let mut child = match command.spawn() {
         Ok(c) => c,
         Err(e) => {
@@ -2408,21 +2534,29 @@ fn run_ccusage_command(
                 return None;
             }
             Ok(None) => {
-                if start.elapsed() > timeout {
+                let cancelled = run.cancel.load(Ordering::SeqCst);
+                if start.elapsed() > timeout || cancelled {
                     // A surviving descendant holds the output pipes open, so the tree has to end
-                    // before the readers can finish.
+                    // before the readers can finish. Turning token history off uses this same path.
                     #[cfg(target_os = "windows")]
                     drop(tree);
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
                     let _ = stderr_reader.take().and_then(|reader| reader.join().ok());
-                    log::warn!(
-                        "[plugin:{}] ccusage timed out after {}s for {}",
-                        plugin_id,
-                        timeout_secs,
-                        label
-                    );
+                    if cancelled {
+                        log::info!(
+                            "[plugin:{}] ccusage stopped because token history is off",
+                            plugin_id
+                        );
+                    } else {
+                        log::warn!(
+                            "[plugin:{}] ccusage timed out after {}s for {}",
+                            plugin_id,
+                            timeout_secs,
+                            label
+                        );
+                    }
                     return None;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(CCUSAGE_POLL_INTERVAL_MS));
@@ -2453,6 +2587,10 @@ fn inject_ccusage<'js>(
         Function::new(
             ctx.clone(),
             move |_ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
+                if !token_history_enabled() {
+                    log::debug!("[plugin:{}] ccusage skipped; token history is off", pid);
+                    return Ok(serde_json::json!({ "status": "no_runner" }).to_string());
+                }
                 let opts: CcusageQueryOpts = match serde_json::from_str(&opts_json) {
                     Ok(v) => v,
                     Err(e) => {
@@ -2463,56 +2601,63 @@ fn inject_ccusage<'js>(
                 let provider = resolve_ccusage_provider(&opts, &pid);
                 let key = ccusage_cache_key(&opts, provider);
 
-                let (cached, needs_refresh) = {
+                let cached_run = {
                     let mut cache = match ccusage_cache().lock() {
                         Ok(cache) => cache,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    match cache.get_mut(&key) {
-                        Some(entry) => {
-                            let fresh =
-                                entry.stored_at.elapsed().as_secs() < CCUSAGE_CACHE_TTL_SECS;
-                            let start = !entry.running && !fresh;
-                            if start {
-                                entry.running = true;
+                    // The switch can flip while this lock was waiting.
+                    if !token_history_enabled() {
+                        None
+                    } else {
+                        match cache.get_mut(&key) {
+                            Some(entry) => {
+                                let fresh =
+                                    entry.stored_at.elapsed().as_secs() < CCUSAGE_CACHE_TTL_SECS;
+                                let start = !entry.running && !fresh;
+                                let started = if start {
+                                    let run_id = next_ccusage_run_id();
+                                    entry.running = true;
+                                    entry.run = run_id;
+                                    Some(run_id)
+                                } else {
+                                    None
+                                };
+                                Some((entry.payload.clone(), started))
                             }
-                            (entry.payload.clone(), start)
-                        }
-                        None => {
-                            cache.insert(
-                                key.clone(),
-                                CcusageCacheEntry {
-                                    payload: None,
-                                    stored_at: std::time::Instant::now(),
-                                    running: true,
-                                },
-                            );
-                            (None, true)
+                            None => {
+                                let run_id = next_ccusage_run_id();
+                                cache.insert(
+                                    key.clone(),
+                                    CcusageCacheEntry {
+                                        payload: None,
+                                        stored_at: std::time::Instant::now(),
+                                        running: true,
+                                        run: run_id,
+                                    },
+                                );
+                                Some((None, Some(run_id)))
+                            }
                         }
                     }
                 };
+                let Some((cached, run_id)) = cached_run else {
+                    return Ok(serde_json::json!({ "status": "no_runner" }).to_string());
+                };
 
-                if needs_refresh {
+                if let Some(run_id) = run_id {
                     let thread_opts = opts.clone();
                     let thread_pid = pid.clone();
                     let thread_key = key.clone();
                     std::thread::spawn(move || {
-                        let result = run_ccusage_query(&thread_opts, provider, &thread_pid);
-                        let mut cache = match ccusage_cache().lock() {
-                            Ok(cache) => cache,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
-                        let entry = cache.entry(thread_key).or_insert(CcusageCacheEntry {
-                            payload: None,
-                            stored_at: std::time::Instant::now(),
-                            running: false,
-                        });
-                        entry.running = false;
-                        // A failed run keeps the previous answer rather than blanking the card.
-                        if result.is_some() {
-                            entry.payload = result;
+                        let run = register_ccusage_run();
+                        if run.cancel.load(Ordering::SeqCst) || !token_history_enabled() {
+                            finish_ccusage_run(&thread_key, run_id, None, &run);
+                            return;
                         }
-                        entry.stored_at = std::time::Instant::now();
+                        let result =
+                            run_ccusage_query(&thread_opts, provider, &thread_pid, &run);
+                        finish_ccusage_run(&thread_key, run_id, result, &run);
                     });
                 }
 
@@ -3752,7 +3897,10 @@ mod tests {
         configure_hidden_command_window(&mut command);
 
         let start = std::time::Instant::now();
-        assert_eq!(run_ccusage_command(command, "test", "test", 1), None);
+        assert_eq!(
+            run_ccusage_command(command, "test", "test", 1, &CcusageRun::fresh()),
+            None
+        );
         assert!(
             start.elapsed() < std::time::Duration::from_secs(15),
             "timed-out run returned after {:?}",

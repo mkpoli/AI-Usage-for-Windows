@@ -16,6 +16,7 @@ const {
   loadGlobalShortcutMock,
   loadLocalHttpApiMock,
   loadMenubarIconStyleMock,
+  loadTokenHistoryMock,
   loadPluginSettingsMock,
   loadResetTimerDisplayModeMock,
   loadStartOnLoginMock,
@@ -38,6 +39,7 @@ const {
   loadGlobalShortcutMock: vi.fn(),
   loadLocalHttpApiMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
+  loadTokenHistoryMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
   loadResetTimerDisplayModeMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
@@ -70,6 +72,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_LOCAL_HTTP_API: false,
   DEFAULT_MENUBAR_ICON_STYLE: "bars",
+  DEFAULT_TOKEN_HISTORY: false,
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
   DEFAULT_START_ON_LOGIN: true,
   DEFAULT_THEME_MODE: "system",
@@ -81,6 +84,7 @@ vi.mock("@/lib/settings", () => ({
   loadGlobalShortcut: loadGlobalShortcutMock,
   loadLocalHttpApi: loadLocalHttpApiMock,
   loadMenubarIconStyle: loadMenubarIconStyleMock,
+  loadTokenHistory: loadTokenHistoryMock,
   loadPluginSettings: loadPluginSettingsMock,
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
   loadStartOnLogin: loadStartOnLoginMock,
@@ -107,6 +111,7 @@ function createArgs() {
     setWslDistros: vi.fn(),
     setLocalHttpApi: vi.fn(),
     setLocalHttpApiError: vi.fn(),
+    setTokenHistory: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -128,6 +133,7 @@ describe("useSettingsBootstrap", () => {
     loadGlobalShortcutMock.mockReset()
     loadLocalHttpApiMock.mockReset()
     loadMenubarIconStyleMock.mockReset()
+    loadTokenHistoryMock.mockReset()
     loadPluginSettingsMock.mockReset()
     loadResetTimerDisplayModeMock.mockReset()
     loadStartOnLoginMock.mockReset()
@@ -167,6 +173,7 @@ describe("useSettingsBootstrap", () => {
     loadMenubarIconStyleMock.mockResolvedValue("provider")
     loadStartOnLoginMock.mockResolvedValue(true)
     loadLocalHttpApiMock.mockResolvedValue(false)
+    loadTokenHistoryMock.mockResolvedValue(false)
     loadCliEnvironmentMock.mockResolvedValue("wsl:Ubuntu")
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     savePluginSettingsMock.mockResolvedValue(undefined)
@@ -299,6 +306,32 @@ describe("useSettingsBootstrap", () => {
     await waitFor(() => {
       expect(args.setLocalHttpApiError).toHaveBeenCalledWith(null)
     })
+  })
+
+  it("passes the stored token history choice through", async () => {
+    loadTokenHistoryMock.mockResolvedValue(true)
+    const args = createArgs()
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setTokenHistory).toHaveBeenCalledWith(true)
+    })
+  })
+
+  it("falls back to off when token history fails to load", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    loadTokenHistoryMock.mockRejectedValue(new Error("store unavailable"))
+    const args = createArgs()
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setTokenHistory).toHaveBeenCalledWith(false)
+    })
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Failed to load token history setting:",
+      expect.any(Error)
+    )
+    errorSpy.mockRestore()
   })
 
   it("falls back to the default loopback API choice when loading fails", async () => {

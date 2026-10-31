@@ -9,6 +9,7 @@ import {
   saveGlobalShortcut,
   saveLocalHttpApi,
   saveStartOnLogin,
+  saveTokenHistory,
   type AutoUpdateIntervalMinutes,
   type CliEnvironment,
   type GlobalShortcut,
@@ -24,6 +25,7 @@ type UseSettingsSystemActionsArgs = {
   setCliEnvironment: (value: CliEnvironment) => void
   setLocalHttpApi: (value: boolean) => void
   setLocalHttpApiError: (value: string | null) => void
+  setTokenHistory: (value: boolean) => void
   refreshEnabledPlugins: () => void
   applyStartOnLogin: (value: boolean) => Promise<void>
 }
@@ -37,6 +39,7 @@ export function useSettingsSystemActions({
   setCliEnvironment,
   setLocalHttpApi,
   setLocalHttpApiError,
+  setTokenHistory,
   refreshEnabledPlugins,
   applyStartOnLogin,
 }: UseSettingsSystemActionsArgs) {
@@ -131,11 +134,24 @@ export function useSettingsSystemActions({
       })
   }, [setLocalHttpApi, setLocalHttpApiError])
 
+  const handleTokenHistoryChange = useCallback((value: boolean) => {
+    track("setting_changed", { setting: "token_history", value: value ? "true" : "false" })
+    setTokenHistory(value)
+    void saveTokenHistory(value).catch((error) => {
+      console.error("Failed to save token history setting:", error)
+    })
+    // The next refresh is what starts a run. This call only opens or closes the gate.
+    invoke("set_token_history_enabled", { enabled: value }).catch((error) => {
+      console.error("Failed to switch token history:", error)
+    })
+  }, [setTokenHistory])
+
   return {
     handleAutoUpdateIntervalChange,
     handleGlobalShortcutChange,
     handleStartOnLoginChange,
     handleCliEnvironmentChange,
     handleLocalHttpApiChange,
+    handleTokenHistoryChange,
   }
 }

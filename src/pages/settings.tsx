@@ -128,6 +128,8 @@ interface SettingsPageProps {
   localHttpApi: boolean;
   localHttpApiError: string | null;
   onLocalHttpApiChange: (value: boolean) => void;
+  tokenHistory: boolean;
+  onTokenHistoryChange: (value: boolean) => void;
 }
 
 export function SettingsPage({
@@ -152,6 +154,8 @@ export function SettingsPage({
   localHttpApi,
   localHttpApiError,
   onLocalHttpApiChange,
+  tokenHistory,
+  onTokenHistoryChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -354,6 +358,19 @@ export function SettingsPage({
           </p>
         </section>
       )}
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Token History</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Token history reads every Claude Code and Codex transcript on each run, and a large history takes many minutes and several cores.
+        </p>
+        <label className="flex items-center gap-2 text-sm select-none text-foreground">
+          <Checkbox
+            checked={tokenHistory}
+            onCheckedChange={(checked) => onTokenHistoryChange(checked === true)}
+          />
+          Token history
+        </label>
+      </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Desktop Widgets</h3>
         <p className="text-sm text-muted-foreground mb-2">
