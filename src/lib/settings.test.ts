@@ -19,8 +19,11 @@ import {
   loadResetTimerDisplayMode,
   loadCliEnvironment,
   DEFAULT_LOCAL_HTTP_API,
+  DEFAULT_TOKEN_HISTORY,
   loadLocalHttpApi,
+  loadTokenHistory,
   saveLocalHttpApi,
+  saveTokenHistory,
   loadStartOnLogin,
   migrateLegacyTraySettings,
   loadThemeMode,
@@ -414,6 +417,21 @@ describe("settings", () => {
   it("falls back to closed for a non-boolean loopback API value", async () => {
     storeState.set("localHttpApi", "yes")
     await expect(loadLocalHttpApi()).resolves.toBe(DEFAULT_LOCAL_HTTP_API)
+  })
+
+  it("keeps token history off when nothing is stored", async () => {
+    await expect(loadTokenHistory()).resolves.toBe(DEFAULT_TOKEN_HISTORY)
+    expect(DEFAULT_TOKEN_HISTORY).toBe(false)
+  })
+
+  it("saves and loads the token history choice", async () => {
+    await saveTokenHistory(true)
+    await expect(loadTokenHistory()).resolves.toBe(true)
+  })
+
+  it("falls back to off for a non-boolean token history value", async () => {
+    storeState.set("tokenHistory", "yes")
+    await expect(loadTokenHistory()).resolves.toBe(DEFAULT_TOKEN_HISTORY)
   })
 
   it("loads the default CLI environment when missing", async () => {

@@ -15,6 +15,7 @@ import {
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_LOCAL_HTTP_API,
   DEFAULT_MENUBAR_ICON_STYLE,
+  DEFAULT_TOKEN_HISTORY,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
@@ -26,6 +27,7 @@ import {
   loadGlobalShortcut,
   loadLocalHttpApi,
   loadMenubarIconStyle,
+  loadTokenHistory,
   migrateLegacyTraySettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
@@ -57,6 +59,7 @@ type UseSettingsBootstrapArgs = {
   setWslDistros: (value: string[]) => void
   setLocalHttpApi: (value: boolean) => void
   setLocalHttpApiError: (value: string | null) => void
+  setTokenHistory: (value: boolean) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -76,6 +79,7 @@ export function useSettingsBootstrap({
   setWslDistros,
   setLocalHttpApi,
   setLocalHttpApiError,
+  setTokenHistory,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -194,6 +198,13 @@ export function useSettingsBootstrap({
           console.error("Failed to load local HTTP API setting:", error)
         }
 
+        let storedTokenHistory = DEFAULT_TOKEN_HISTORY
+        try {
+          storedTokenHistory = await loadTokenHistory()
+        } catch (error) {
+          console.error("Failed to load token history setting:", error)
+        }
+
         // The host opens the socket during startup, so a mismatch here means the
         // port was taken by something else.
         let localHttpApiError: string | null = null
@@ -212,6 +223,7 @@ export function useSettingsBootstrap({
           setPluginSettings(normalized)
           setLocalHttpApi(storedLocalHttpApi)
           setLocalHttpApiError(localHttpApiError)
+          setTokenHistory(storedTokenHistory)
           setAutoUpdateInterval(storedInterval)
           setThemeMode(storedThemeMode)
           setDisplayMode(storedDisplayMode)
@@ -255,6 +267,7 @@ export function useSettingsBootstrap({
     setWslDistros,
     setLocalHttpApi,
     setLocalHttpApiError,
+    setTokenHistory,
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,

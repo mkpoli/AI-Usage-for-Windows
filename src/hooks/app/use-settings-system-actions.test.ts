@@ -9,6 +9,7 @@ const {
   saveGlobalShortcutMock,
   saveLocalHttpApiMock,
   saveStartOnLoginMock,
+  saveTokenHistoryMock,
   trackMock,
 } = vi.hoisted(() => ({
   trackMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   saveGlobalShortcutMock: vi.fn(),
   saveLocalHttpApiMock: vi.fn(),
   saveStartOnLoginMock: vi.fn(),
+  saveTokenHistoryMock: vi.fn(),
   invokeMock: vi.fn(),
 }))
 
@@ -37,6 +39,7 @@ vi.mock("@/lib/settings", () => ({
   saveGlobalShortcut: saveGlobalShortcutMock,
   saveLocalHttpApi: saveLocalHttpApiMock,
   saveStartOnLogin: saveStartOnLoginMock,
+  saveTokenHistory: saveTokenHistoryMock,
 }))
 
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
@@ -49,6 +52,7 @@ describe("useSettingsSystemActions", () => {
     saveGlobalShortcutMock.mockReset()
     saveLocalHttpApiMock.mockReset()
     saveStartOnLoginMock.mockReset()
+    saveTokenHistoryMock.mockReset()
     saveCliEnvironmentMock.mockReset()
     invokeMock.mockReset()
 
@@ -59,6 +63,7 @@ describe("useSettingsSystemActions", () => {
     saveGlobalShortcutMock.mockResolvedValue(undefined)
     saveLocalHttpApiMock.mockResolvedValue(undefined)
     saveStartOnLoginMock.mockResolvedValue(undefined)
+    saveTokenHistoryMock.mockResolvedValue(undefined)
     saveCliEnvironmentMock.mockResolvedValue(undefined)
     invokeMock.mockResolvedValue(undefined)
   })
@@ -78,6 +83,7 @@ describe("useSettingsSystemActions", () => {
         setCliEnvironment: vi.fn(),
         setLocalHttpApi: vi.fn(),
         setLocalHttpApiError: vi.fn(),
+        setTokenHistory: vi.fn(),
         refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
       })
@@ -107,6 +113,7 @@ describe("useSettingsSystemActions", () => {
         setCliEnvironment: vi.fn(),
         setLocalHttpApi: vi.fn(),
         setLocalHttpApiError: vi.fn(),
+        setTokenHistory: vi.fn(),
         refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
       })
@@ -134,6 +141,7 @@ describe("useSettingsSystemActions", () => {
         setCliEnvironment: vi.fn(),
         setLocalHttpApi: vi.fn(),
         setLocalHttpApiError: vi.fn(),
+        setTokenHistory: vi.fn(),
         refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin,
       })
@@ -188,6 +196,7 @@ describe("useSettingsSystemActions", () => {
         setCliEnvironment: vi.fn(),
         setLocalHttpApi: vi.fn(),
         setLocalHttpApiError: vi.fn(),
+        setTokenHistory: vi.fn(),
         refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin,
       })
@@ -225,6 +234,7 @@ describe("useSettingsSystemActions", () => {
         setCliEnvironment,
         setLocalHttpApi: vi.fn(),
         setLocalHttpApiError: vi.fn(),
+        setTokenHistory: vi.fn(),
         refreshEnabledPlugins,
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
       })
@@ -256,6 +266,7 @@ describe("useSettingsSystemActions", () => {
         setCliEnvironment,
         setLocalHttpApi: vi.fn(),
         setLocalHttpApiError: vi.fn(),
+        setTokenHistory: vi.fn(),
         refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
       })
@@ -284,6 +295,7 @@ describe("useSettingsSystemActions", () => {
         setCliEnvironment: vi.fn(),
         setLocalHttpApi,
         setLocalHttpApiError,
+        setTokenHistory: vi.fn(),
         refreshEnabledPlugins: vi.fn(),
         applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
         ...overrides,
@@ -382,6 +394,76 @@ describe("useSettingsSystemActions", () => {
     expect(setLocalHttpApiError).not.toHaveBeenCalledWith(
       "Port 6736 is in use by another program."
     )
+    errorSpy.mockRestore()
+  })
+
+  function renderTokenHistoryActions() {
+    const setTokenHistory = vi.fn()
+    const { result } = renderHook(() =>
+      useSettingsSystemActions({
+        pluginSettings: { order: ["codex"], disabled: [] },
+        setAutoUpdateInterval: vi.fn(),
+        setAutoUpdateNextAt: vi.fn(),
+        setGlobalShortcut: vi.fn(),
+        setStartOnLogin: vi.fn(),
+        setCliEnvironment: vi.fn(),
+        setLocalHttpApi: vi.fn(),
+        setLocalHttpApiError: vi.fn(),
+        setTokenHistory,
+        refreshEnabledPlugins: vi.fn(),
+        applyStartOnLogin: vi.fn().mockResolvedValue(undefined),
+      })
+    )
+    return { result, setTokenHistory }
+  }
+
+  it("turns token history on and tells the host", () => {
+    const { result, setTokenHistory } = renderTokenHistoryActions()
+
+    act(() => {
+      result.current.handleTokenHistoryChange(true)
+    })
+
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
+      setting: "token_history",
+      value: "true",
+    })
+    expect(setTokenHistory).toHaveBeenCalledWith(true)
+    expect(saveTokenHistoryMock).toHaveBeenCalledWith(true)
+    expect(invokeMock).toHaveBeenCalledWith("set_token_history_enabled", { enabled: true })
+  })
+
+  it("turns token history off and tells the host", () => {
+    const { result, setTokenHistory } = renderTokenHistoryActions()
+
+    act(() => {
+      result.current.handleTokenHistoryChange(false)
+    })
+
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
+      setting: "token_history",
+      value: "false",
+    })
+    expect(setTokenHistory).toHaveBeenCalledWith(false)
+    expect(saveTokenHistoryMock).toHaveBeenCalledWith(false)
+    expect(invokeMock).toHaveBeenCalledWith("set_token_history_enabled", { enabled: false })
+  })
+
+  it("keeps the token history choice when saving it fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const saveError = new Error("store unavailable")
+    saveTokenHistoryMock.mockRejectedValueOnce(saveError)
+    const { result, setTokenHistory } = renderTokenHistoryActions()
+
+    act(() => {
+      result.current.handleTokenHistoryChange(true)
+    })
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Failed to save token history setting:", saveError)
+    })
+    expect(setTokenHistory).toHaveBeenCalledWith(true)
+    expect(invokeMock).toHaveBeenCalledWith("set_token_history_enabled", { enabled: true })
     errorSpy.mockRestore()
   })
 

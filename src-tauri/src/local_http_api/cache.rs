@@ -176,6 +176,19 @@ pub fn is_enabled_in_settings(app_data_dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether Settings has token history on. The key is `tokenHistory`.
+/// A missing file, a missing key, or a non-boolean value stays off.
+pub fn is_token_history_enabled(app_data_dir: &Path) -> bool {
+    let path = app_data_dir.join(SETTINGS_FILE_NAME);
+    let Ok(data) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&data)
+        .ok()
+        .and_then(|settings| settings.get("tokenHistory")?.as_bool())
+        .unwrap_or(false)
+}
+
 #[derive(Deserialize)]
 struct PluginSettingsJson {
     order: Option<Vec<String>>,

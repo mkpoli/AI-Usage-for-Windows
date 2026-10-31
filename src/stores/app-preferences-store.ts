@@ -6,6 +6,7 @@ import {
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_LOCAL_HTTP_API,
   DEFAULT_MENUBAR_ICON_STYLE,
+  DEFAULT_TOKEN_HISTORY,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
@@ -30,6 +31,7 @@ type AppPreferencesStore = {
   menubarIconStyle: MenubarIconStyle
   localHttpApi: boolean
   localHttpApiError: string | null
+  tokenHistory: boolean
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
@@ -41,6 +43,7 @@ type AppPreferencesStore = {
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setLocalHttpApi: (value: boolean) => void
   setLocalHttpApiError: (value: string | null) => void
+  setTokenHistory: (value: boolean) => void
   resetState: () => void
 }
 
@@ -56,6 +59,7 @@ const initialState = {
   menubarIconStyle: DEFAULT_MENUBAR_ICON_STYLE,
   localHttpApi: DEFAULT_LOCAL_HTTP_API,
   localHttpApiError: null as string | null,
+  tokenHistory: DEFAULT_TOKEN_HISTORY,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -71,5 +75,6 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setMenubarIconStyle: (value) => set({ menubarIconStyle: value }),
   setLocalHttpApi: (value) => set({ localHttpApi: value }),
   setLocalHttpApiError: (value) => set({ localHttpApiError: value }),
+  setTokenHistory: (value) => set({ tokenHistory: value }),
   resetState: () => set(initialState),
 }))

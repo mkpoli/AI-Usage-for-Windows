@@ -41,6 +41,7 @@ const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 const CLI_ENVIRONMENT_KEY = "cliEnvironment";
 const LOCAL_HTTP_API_KEY = "localHttpApi";
+const TOKEN_HISTORY_KEY = "tokenHistory";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 1;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -51,6 +52,8 @@ export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = true;
 /** The loopback socket stays closed until someone asks for it. */
 export const DEFAULT_LOCAL_HTTP_API = false;
+/** Token history stays off until someone asks for it. */
+export const DEFAULT_TOKEN_HISTORY = false;
 export const LOCAL_HTTP_API_URL = "http://127.0.0.1:6736";
 export const LOCAL_HTTP_API_PORT_TAKEN = "Port 6736 is in use by another program.";
 export const WINDOWS_CLI_ENVIRONMENT: CliEnvironment = "windows";
@@ -341,6 +344,17 @@ export async function loadLocalHttpApi(): Promise<boolean> {
 
 export async function saveLocalHttpApi(value: boolean): Promise<void> {
   await store.set(LOCAL_HTTP_API_KEY, value);
+  await store.save();
+}
+
+export async function loadTokenHistory(): Promise<boolean> {
+  const stored = await store.get<unknown>(TOKEN_HISTORY_KEY);
+  if (typeof stored === "boolean") return stored;
+  return DEFAULT_TOKEN_HISTORY;
+}
+
+export async function saveTokenHistory(value: boolean): Promise<void> {
+  await store.set(TOKEN_HISTORY_KEY, value);
   await store.save();
 }
 
