@@ -18,10 +18,11 @@ jobs:
         with:
           node-version: 24
 
-      - run: npm install
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
 
       - name: Type-check and build
-        run: npm run build
+        run: bun run build
 
       - name: Run tests
-        run: npm run test
+        run: bun run test
