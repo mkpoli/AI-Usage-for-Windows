@@ -5,6 +5,11 @@
     "~/AppData/Roaming/Antigravity/User/globalStorage/state.vscdb",
     "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb",
   ]
+  var IDE_STATE_DB_CANDIDATES = [
+    "%APPDATA%\\Antigravity IDE\\User\\globalStorage\\state.vscdb",
+    "~/AppData/Roaming/Antigravity IDE/User/globalStorage/state.vscdb",
+    "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb",
+  ]
   var CLOUD_CODE_URLS = [
     "https://daily-cloudcode-pa.googleapis.com",
     "https://cloudcode-pa.googleapis.com",
@@ -23,6 +28,30 @@
     "MODEL_PLACEHOLDER_M19": true,
     "MODEL_PLACEHOLDER_M9": true,
     "MODEL_PLACEHOLDER_M12": true,
+    "gpt-oss-120b": true,
+    "gpt-oss-120b-medium": true,
+    "MODEL_OPENAI_GPT_OSS_120B_MEDIUM": true,
+  }
+
+  // GPT-OSS is being retired from Antigravity. Match its IDs and labels so
+  // neither data source can bring the row back.
+  function isHiddenModel(modelId, label) {
+    if (modelId && /gpt-oss/i.test(String(modelId))) return true
+    if (label && /gpt-oss/i.test(String(label))) return true
+    return false
+  }
+
+  // Cloud Code sometimes omits displayName for the Argon buckets. Derive the
+  // same label Antigravity shows so High and Low stay separate rows.
+  function gemini4FallbackLabel(modelId) {
+    var match = String(modelId).toLowerCase().match(
+      /^gemini-4-argon(?:-(?:trial|preview))?(?:-(none|n|low|medium|high|xhigh))?(?:-(?:trial|preview))?$/
+    )
+    if (!match) return ""
+    var level = match[1]
+    if (!level) return "Gemini 4 Argon"
+    if (level === "n") level = "none"
+    return "Gemini 4 Argon (" + level.charAt(0).toUpperCase() + level.slice(1) + ")"
   }
   // --- Protobuf wire-format decoder ---
 
@@ -36,6 +65,35 @@
       shift += 7
     }
     return null
+  }
+
+  function readFieldValues(s, targetField) {
+    var values = []
+    var pos = 0
+    while (pos < s.length) {
+      var tag = readVarint(s, pos)
+      if (!tag) break
+      pos = tag.p
+      var fieldNum = Math.floor(tag.v / 8)
+      var wireType = tag.v % 8
+      if (wireType === 0) {
+        var val = readVarint(s, pos)
+        if (!val) break
+        if (fieldNum === targetField) values.push({ type: 0, value: val.v })
+        pos = val.p
+      } else if (wireType === 2) {
+        var len = readVarint(s, pos)
+        if (!len) break
+        pos = len.p
+        if (fieldNum === targetField) {
+          values.push({ type: 2, data: s.substring(pos, pos + len.v) })
+        }
+        pos += len.v
+      } else {
+        break
+      }
+    }
+    return values
   }
 
   function readFields(s) {
@@ -76,8 +134,16 @@
     ]
   }
 
-  function queryStateDb(ctx, sql) {
-    var candidates = stateDbCandidates(ctx)
+  function ideStateDbCandidates(ctx) {
+    if (ctx.app && ctx.app.platform === "windows") return IDE_STATE_DB_CANDIDATES
+    return [
+      "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb",
+      "%APPDATA%\\Antigravity IDE\\User\\globalStorage\\state.vscdb",
+      "~/AppData/Roaming/Antigravity IDE/User/globalStorage/state.vscdb",
+    ]
+  }
+
+  function queryStateDbCandidates(ctx, candidates, sql) {
     var lastError = null
     for (var i = 0; i < candidates.length; i++) {
       try {
@@ -88,6 +154,10 @@
     }
     if (lastError) throw lastError
     return null
+  }
+
+  function queryStateDb(ctx, sql) {
+    return queryStateDbCandidates(ctx, stateDbCandidates(ctx), sql)
   }
 
   function loadApiKey(ctx) {
@@ -130,6 +200,53 @@
       return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
     } catch (e) {
       ctx.host.log.warn("failed to read proto tokens from antigravity DB: " + String(e))
+      return null
+    }
+  }
+
+  // The IDE's sentinel value wraps the token in a base64-encoded protobuf.
+  // Unwrap until the `ya29.` access token surfaces.
+  function unwrapAccessToken(ctx, value) {
+    var token = value
+    for (var i = 0; i < 3; i++) {
+      if (typeof token !== "string" || !token) return null
+      if (token.indexOf("ya29.") === 0) return token
+      var decoded
+      try {
+        decoded = ctx.base64.decode(token)
+      } catch (e) {
+        return null
+      }
+      var field = readFields(decoded)[1]
+      if (!field || field.type !== 2) return null
+      token = field.data
+    }
+    return null
+  }
+
+  // Antigravity IDE keeps one access token in a sentinel protobuf instead of
+  // the app's auth rows. It has no refresh token, so an expired value simply
+  // falls through to the app credentials.
+  function loadIdeAccessToken(ctx) {
+    try {
+      var rows = queryStateDbCandidates(
+        ctx,
+        ideStateDbCandidates(ctx),
+        "SELECT value FROM ItemTable WHERE key = 'antigravityUnifiedStateSync.oauthToken' LIMIT 1"
+      )
+      var parsed = ctx.util.tryParseJson(rows)
+      if (!parsed || !parsed.length || !parsed[0].value) return null
+      var entries = readFieldValues(ctx.base64.decode(parsed[0].value), 1)
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].type !== 2) continue
+        var value = readFields(entries[i].data)[2]
+        if (!value || value.type !== 2) continue
+        var token = unwrapAccessToken(ctx, value.data)
+        if (token) return token
+      }
+      return null
+    } catch (e) {
+      ctx.host.log.warn("failed to read Antigravity IDE token: " + String(e))
       return null
     }
   }
@@ -275,14 +392,18 @@
 
   function modelSortKey(label) {
     var lower = label.toLowerCase()
-    // Match Antigravity's model quota UI: newest Gemini Flash first, then Pro,
-    // then Claude variants, then other model garden entries.
-    if (lower.indexOf("gemini 3.5") !== -1 && lower.indexOf("flash") !== -1) return "0a_" + label
-    if (lower.indexOf("gemini 3.5") !== -1 && lower.indexOf("pro") !== -1) return "0b_" + label
-    if (lower.indexOf("gemini 3.1") !== -1 && lower.indexOf("pro") !== -1) return "0c_" + label
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "0d_" + label
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "0e_" + label
-    if (lower.indexOf("gemini") !== -1) return "0f_" + label
+    // Match Antigravity's model quota UI: newest Gemini first, then Claude
+    // variants, then other model garden entries.
+    if (lower.indexOf("gemini 4") !== -1) return "0a_" + label
+    if (lower.indexOf("gemini 3.8") !== -1) return "0b_" + label
+    if (lower.indexOf("gemini 3.7") !== -1) return "0c_" + label
+    if (lower.indexOf("gemini 3.6") !== -1) return "0d_" + label
+    if (lower.indexOf("gemini 3.5") !== -1 && lower.indexOf("flash") !== -1) return "0e_" + label
+    if (lower.indexOf("gemini 3.5") !== -1 && lower.indexOf("pro") !== -1) return "0f_" + label
+    if (lower.indexOf("gemini 3.1") !== -1 && lower.indexOf("pro") !== -1) return "0g_" + label
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "0h_" + label
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "0i_" + label
+    if (lower.indexOf("gemini") !== -1) return "0j_" + label
     if (lower.indexOf("claude") !== -1 && lower.indexOf("sonnet") !== -1) return "1a_" + label
     if (lower.indexOf("claude") !== -1 && lower.indexOf("opus") !== -1) return "1b_" + label
     if (lower.indexOf("claude") !== -1) return "1c_" + label
@@ -374,7 +495,9 @@
       var modelId = m.model || keys[i]
       if (CC_MODEL_BLACKLIST[modelId]) continue
       var displayName = (typeof m.displayName === "string") ? m.displayName.trim() : ""
+      if (!displayName) displayName = gemini4FallbackLabel(modelId)
       if (!displayName) continue
+      if (isHiddenModel(modelId, displayName)) continue
       var qi = m.quotaInfo
       var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
       var rtime = (qi && qi.resetTime) || undefined
@@ -433,6 +556,7 @@
     for (var j = 0; j < configs.length; j++) {
       var mid = configs[j].modelOrAlias && configs[j].modelOrAlias.model
       if (mid && CC_MODEL_BLACKLIST[mid]) continue
+      if (isHiddenModel(mid, configs[j].label)) continue
       filtered.push(configs[j])
     }
 
@@ -465,21 +589,28 @@
   function probe(ctx) {
     var apiKey = loadApiKey(ctx)
     var proto = loadProtoTokens(ctx)
+    var ideToken = loadIdeAccessToken(ctx)
 
     var lsResult = probeLs(ctx, apiKey)
     if (lsResult) return lsResult
 
     var tokens = []
-    if (proto && proto.accessToken) {
+    if (ideToken) tokens.push(ideToken)
+    if (proto && proto.accessToken && proto.accessToken !== ideToken) {
       if (!proto.expirySeconds || proto.expirySeconds > Math.floor(Date.now() / 1000)) {
         tokens.push(proto.accessToken)
       }
     }
 
     var cached = loadCachedToken(ctx)
-    if (cached && cached !== (proto && proto.accessToken)) tokens.push(cached)
+    if (cached && cached !== (proto && proto.accessToken) && cached !== ideToken) tokens.push(cached)
 
-    if (apiKey && apiKey !== (proto && proto.accessToken) && apiKey !== cached) tokens.push(apiKey)
+    if (
+      apiKey &&
+      apiKey !== (proto && proto.accessToken) &&
+      apiKey !== cached &&
+      apiKey !== ideToken
+    ) tokens.push(apiKey)
 
     if (tokens.length === 0 && !(proto && proto.refreshToken)) throw "Start Antigravity and try again."
 
