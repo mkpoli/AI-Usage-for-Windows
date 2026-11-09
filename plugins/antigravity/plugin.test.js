@@ -331,6 +331,7 @@ describe("antigravity plugin", () => {
     const labels = manifest.lines.map((line) => line.label)
     expect(labels).toContain("Gemini 4 Argon")
     expect(labels).toContain("Gemini 4 Argon (High)")
+    expect(labels).toContain("Gemini 3.5 Flash Lite")
     expect(labels.some((label) => /gpt-oss/i.test(label))).toBe(false)
   })
 
