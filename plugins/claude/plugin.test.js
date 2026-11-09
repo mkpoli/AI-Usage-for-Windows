@@ -487,7 +487,7 @@ describe("claude plugin", () => {
     })
   })
 
-  it("appends max rate limit tier to the plan label when present", async () => {
+  it("labels the 20x tier as Ultra and keeps 5x on Max", async () => {
     const runCase = async (rateLimitTier, expectedPlan) => {
       const ctx = makeCtx()
       ctx.host.fs.exists = () => true
@@ -511,8 +511,35 @@ describe("claude plugin", () => {
       expect(result.plan).toBe(expectedPlan)
     }
 
-    await runCase("claude_max_subscription_20x", "Max 20x")
+    await runCase("claude_max_subscription_20x", "Ultra")
+    await runCase("default_claude_max_20x", "Ultra")
     await runCase("claude_max_subscription_5x", "Max 5x")
+  })
+
+  it("labels an ultra subscription as Ultra when the tier is absent", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: { accessToken: "token", subscriptionType: "ultra" },
+      })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: null,
+        seven_day: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Ultra")
+    expect(result.lines.find((line) => line.label === "Weekly")).toMatchObject({
+      type: "progress",
+      used: 10,
+      limit: 100,
+    })
+    expect(result.lines.find((line) => line.label === "Session")).toBeUndefined()
   })
 
   it("omits resetsAt when resets_at is missing", async () => {
