@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.3 - 2026-11-10
+
+### Added
+
+- Antigravity shows the Gemini 4 Argon weekly quota. The quota summary request now sends the `aicode-consumers` project and the CLI client shape; the generic client shape returned only the Claude and GPT group. Argon renders first as `Gemini 4 Argon` with percent used and a seven-day reset, and the per-model rows follow below it.
+
 ## v0.9.2 - 2026-11-10
 
 ### Fixed
