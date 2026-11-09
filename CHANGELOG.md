@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.2 - 2026-11-10
+
+### Fixed
+
+- Antigravity keeps the current Gemini 3 rows on Overview and the tray when the account has no Gemini 4 quota. v0.9.1 moved those labels to Gemini 4, which left the card without a declared row on accounts whose quota response has no Gemini 4 group.
+
 ## v0.9.1 - 2026-11-09
 
 ### Fixed
