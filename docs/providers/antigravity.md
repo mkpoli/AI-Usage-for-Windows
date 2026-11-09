@@ -74,7 +74,7 @@ GPT-OSS rows are filtered from both the API and language-server data. Antigravit
 - **Plan:** best-effort account plan name when available
 - **Model lines:** each visible Antigravity model quota bucket is shown as percent used. Gemini buckets sort newest first, including labels such as `Gemini 4 Argon (High)`, `Gemini 4 Argon (Low)`, `Gemini 3.8 Flash`, and `Gemini 3.1 Pro (High)`. Claude buckets include `Claude Sonnet 5.5 (Thinking)` and `Claude Opus 5.5 (Thinking)`.
 - **Fallback label:** a `gemini-4-argon` model without a display name renders as `Gemini 4 Argon`; a `-high`, `-medium`, or `-low` suffix becomes the matching `(High)`, `(Medium)`, or `(Low)` label
-- **Overview and tray:** the Overview scope declares `Gemini 4 Argon`, its High and Low buckets, `Gemini 3.8 Flash (High)`, and `Gemini 3.1 Pro (High)`. The tray primary uses the first available Gemini 4 row.
+- **Overview and tray:** the Overview scope declares `Gemini 4 Argon`, its High and Low buckets, `Gemini 3.8 Flash (High)`, and the current `Gemini 3.5 Flash Lite`, `Gemini 3 Flash`, and `Gemini 3.1 Flash` rows. The tray primary uses the first available Gemini 4 row, then `Gemini 3.5 Flash Lite`.
 - Duplicate model labels are collapsed to the bucket with the lowest remaining fraction
 - **Account:** account email/name when available
 
