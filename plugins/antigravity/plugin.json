@@ -10,26 +10,31 @@
   "lines": [
     {
       "type": "progress",
-      "label": "Gemini 3.5 Flash (High)",
+      "label": "Gemini 4 Argon",
       "scope": "overview",
       "primaryOrder": 1
     },
     {
       "type": "progress",
-      "label": "Gemini 3.5 Flash (Low)",
+      "label": "Gemini 4 Argon (High)",
       "scope": "overview",
       "primaryOrder": 2
     },
     {
       "type": "progress",
-      "label": "Gemini 3.5 Flash (Medium)",
+      "label": "Gemini 4 Argon (Low)",
+      "scope": "overview",
+      "primaryOrder": 3
+    },
+    {
+      "type": "progress",
+      "label": "Gemini 3.8 Flash (High)",
       "scope": "overview"
     },
     {
       "type": "progress",
       "label": "Gemini 3.1 Pro (High)",
-      "scope": "overview",
-      "primaryOrder": 3
+      "scope": "overview"
     }
   ]
 }

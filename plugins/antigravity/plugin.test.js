@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { readFileSync } from "node:fs"
 import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
@@ -31,6 +32,16 @@ function makeUserStatusResponse(overrides) {
       },
       cascadeModelConfigData: {
         clientModelConfigs: [
+          {
+            label: "Gemini 4 Argon (High)",
+            modelOrAlias: { model: "gemini-4-argon-high" },
+            quotaInfo: { remainingFraction: 0.85, resetTime: "2026-02-08T09:00:56Z" },
+          },
+          {
+            label: "Gemini 4 Argon (Low)",
+            modelOrAlias: { model: "gemini-4-argon-low" },
+            quotaInfo: { remainingFraction: 0.9, resetTime: "2026-02-08T09:00:56Z" },
+          },
           {
             label: "Gemini 3.5 Flash (High)",
             modelOrAlias: { model: "MODEL_PLACEHOLDER_M40" },
@@ -154,6 +165,32 @@ function makeProtobufBase64(ctx, accessToken, refreshToken, expirySeconds) {
   return ctx.base64.encode(outer)
 }
 
+function makeIdeOAuthBase64(ctx, accessToken) {
+  function encodeVarint(n) {
+    var bytes = ""
+    while (n > 0x7f) {
+      bytes += String.fromCharCode((n & 0x7f) | 0x80)
+      n = Math.floor(n / 128)
+    }
+    bytes += String.fromCharCode(n & 0x7f)
+    return bytes
+  }
+  function encodeField(fieldNum, wireType, data) {
+    var tag = encodeVarint(fieldNum * 8 + wireType)
+    if (wireType === 2) return tag + encodeVarint(data.length) + data
+    return ""
+  }
+  var value = ctx.base64.encode(encodeField(1, 2, accessToken))
+  var entry =
+    encodeField(1, 2, "oauthTokenInfoSentinelKey") +
+    encodeField(2, 2, value)
+  var decoyValue = ctx.base64.encode(encodeField(1, 2, "ya29.other-account"))
+  var decoy =
+    encodeField(1, 2, "otherSentinelKey") +
+    encodeField(2, 2, decoyValue)
+  return ctx.base64.encode(encodeField(1, 2, entry) + encodeField(1, 2, decoy))
+}
+
 // --- Tests ---
 
 describe("antigravity plugin", () => {
@@ -233,13 +270,14 @@ describe("antigravity plugin", () => {
     // Model lines preserve Antigravity's per-model quota buckets.
     const labels = result.lines.map((l) => l.label)
     expect(labels).toEqual([
+      "Gemini 4 Argon (High)",
+      "Gemini 4 Argon (Low)",
       "Gemini 3.5 Flash (High)",
       "Gemini 3.5 Flash (Medium)",
       "Gemini 3.1 Pro (High)",
       "Gemini 3.1 Pro (Low)",
       "Claude Sonnet 4.6 (Thinking)",
       "Claude Opus 4.6 (Thinking)",
-      "GPT-OSS 120B (Medium)",
     ])
   })
 
@@ -288,6 +326,14 @@ describe("antigravity plugin", () => {
     expect(highLines[0].used).toBe(20)
   })
 
+  it("declares Gemini 4 and leaves GPT-OSS out of the overview", () => {
+    const manifest = JSON.parse(readFileSync("plugins/antigravity/plugin.json", "utf8"))
+    const labels = manifest.lines.map((line) => line.label)
+    expect(labels).toContain("Gemini 4 Argon")
+    expect(labels).toContain("Gemini 4 Argon (High)")
+    expect(labels.some((label) => /gpt-oss/i.test(label))).toBe(false)
+  })
+
   it("orders: Gemini (Pro, Flash), Claude (Opus, Sonnet), then others", async () => {
     const ctx = makeCtx()
     const discovery = makeDiscovery()
@@ -300,13 +346,14 @@ describe("antigravity plugin", () => {
     const labels = result.lines.map((l) => l.label)
 
     expect(labels).toEqual([
+      "Gemini 4 Argon (High)",
+      "Gemini 4 Argon (Low)",
       "Gemini 3.5 Flash (High)",
       "Gemini 3.5 Flash (Medium)",
       "Gemini 3.1 Pro (High)",
       "Gemini 3.1 Pro (Low)",
       "Claude Sonnet 4.6 (Thinking)",
       "Claude Opus 4.6 (Thinking)",
-      "GPT-OSS 120B (Medium)",
     ])
   })
 
@@ -1316,7 +1363,7 @@ describe("antigravity plugin", () => {
     expect(labels).toEqual(["Claude Sonnet 4.5"])
   })
 
-  it("Cloud Code keeps non-blacklisted models with valid displayName", async () => {
+  it("Cloud Code drops GPT-OSS, labels Gemini 4 Argon, and keeps other models", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test", "1//r", futureExpiry))
@@ -1328,6 +1375,14 @@ describe("antigravity plugin", () => {
           status: 200,
           bodyText: JSON.stringify({
             models: {
+              "gemini-4-argon-high": {
+                model: "gemini-4-argon-high",
+                quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "gemini-4-argon-low": {
+                model: "gemini-4-argon-low",
+                quotaInfo: { remainingFraction: 0.9, resetTime: "2026-02-08T10:00:00Z" },
+              },
               "gemini-3-pro-high": {
                 displayName: "Gemini 3 Pro (High)",
                 model: "MODEL_PLACEHOLDER_M8",
@@ -1355,9 +1410,58 @@ describe("antigravity plugin", () => {
 
     const labels = result.lines.map((l) => l.label)
     expect(labels).toEqual([
+      "Gemini 4 Argon (High)",
+      "Gemini 4 Argon (Low)",
       "Gemini 3 Pro (High)",
       "Claude Opus 4.6 (Thinking)",
-      "GPT-OSS 120B (Medium)",
+    ])
+  })
+
+  it("uses the Antigravity IDE access token when app credentials are missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(null)
+    const ideToken = "ya29.ide-token"
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (String(db).includes("Antigravity IDE") && sql.includes("oauthToken")) {
+        return JSON.stringify([{ value: makeIdeOAuthBase64(ctx, ideToken) }])
+      }
+      return "[]"
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        expect(opts.headers.Authorization).toBe("Bearer " + ideToken)
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            models: {
+              "gemini-4-argon-high": {
+                displayName: "Gemini 4 Argon (High)",
+                model: "gemini-4-argon-high",
+                quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "claude-opus-4-6-thinking": {
+                displayName: "Claude Opus 4.6 (Thinking)",
+                model: "MODEL_PLACEHOLDER_M26",
+                quotaInfo: { remainingFraction: 1, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "gpt-oss-120b-medium": {
+                displayName: "GPT-OSS 120B (Medium)",
+                model: "gpt-oss-120b-medium",
+                quotaInfo: { remainingFraction: 1, resetTime: "2026-02-08T10:00:00Z" },
+              },
+            },
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.map((l) => l.label)).toEqual([
+      "Gemini 4 Argon (High)",
+      "Claude Opus 4.6 (Thinking)",
     ])
   })
 
@@ -1493,13 +1597,14 @@ describe("antigravity plugin", () => {
     expect(result.plan).toBe("Google AI Ultra")
     const labels = result.lines.map((l) => l.label)
     expect(labels).toEqual([
+      "Gemini 4 Argon (High)",
+      "Gemini 4 Argon (Low)",
       "Gemini 3.5 Flash (High)",
       "Gemini 3.5 Flash (Medium)",
       "Gemini 3.1 Pro (High)",
       "Gemini 3.1 Pro (Low)",
       "Claude Sonnet 4.6 (Thinking)",
       "Claude Opus 4.6 (Thinking)",
-      "GPT-OSS 120B (Medium)",
     ])
   })
 
