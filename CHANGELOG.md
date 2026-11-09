@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.9.1 - 2026-11-09
+
+### Fixed
+
+- Claude Max 20x accounts show **Ultra**. Anthropic renamed the tier, while existing credentials still carry `subscriptionType: "max"` and a `claude_max_20x` rate-limit tier; the card now reads both that tier and the newer `ultra` subscription. Ultra's missing five-hour window stays hidden, and Max 5x keeps its suffix.
+
+- Antigravity reads the Antigravity IDE access token from its own state database, so Gemini 4 Argon appears when the IDE has refreshed that token. Gemini 4 buckets sort first, the Overview and tray focus on Gemini 4, model IDs without a display name derive a `(High)`/`(Medium)`/`(Low)` label, and GPT-OSS rows are filtered from both data sources.
+
 ## v0.9.0 - 2026-11-01
 
 ### Added
