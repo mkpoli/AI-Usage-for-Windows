@@ -33,7 +33,7 @@ Returns rate limit windows and optional extra credits.
 
 ```jsonc
 {
-  "five_hour": {
+  "five_hour": {                    // null on Ultra, which has no 5-hour window
     "utilization": 25,              // % used in 5h rolling window
     "resets_at": "2026-01-28T15:00:00Z"
   },
@@ -72,7 +72,7 @@ Returns rate limit windows and optional extra credits.
 }
 ```
 
-All windows are enforced simultaneously — hitting any limit throttles the user.
+All returned windows are enforced simultaneously. Ultra accounts return `five_hour: null`, so their card shows the weekly windows only. Pro and Max 5x keep the five-hour and weekly meters.
 
 ## Supplemental Peak Hours Status
 
@@ -99,13 +99,17 @@ This is informational only. PromoClock is an independent public service, not an 
     "refreshToken": "<token>",
     "expiresAt": 1738300000000,      // unix ms
     "scopes": ["..."],
-    "subscriptionType": "pro",
-    "rateLimitTier": "..."
+    "subscriptionType": "max",
+    "rateLimitTier": "default_claude_max_20x"
   }
 }
 ```
 
 **Fallback:** Windows Credential Manager, service name `Claude Code-credentials` (same JSON structure).
+
+### Plan Labels
+
+Anthropic renamed Max 20x to Ultra. Credentials that still report `subscriptionType: "max"` and a `claude_max_20x` tier render as **Ultra**; newer sign-ins may report `subscriptionType: "ultra"`. Max 5x keeps its tier suffix, so the card reads **Max 5x**.
 
 The path resolves inside the Windows user profile. A Claude Code running under WSL keeps its own
 credentials in the Linux home directory, and a login there leaves the Windows record untouched.

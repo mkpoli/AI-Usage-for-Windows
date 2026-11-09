@@ -867,13 +867,19 @@
     if (creds.oauth.subscriptionType) {
       const basePlan = ctx.fmt.planLabel(creds.oauth.subscriptionType)
       if (basePlan) {
-        let tierSuffix = ""
-        const rlt = String(creds.oauth.rateLimitTier || "")
-        const tierMatch = rlt.match(/(\d+)x/)
-        if (tierMatch) {
-          tierSuffix = " " + tierMatch[1] + "x"
+        const subscription = String(creds.oauth.subscriptionType).trim().toLowerCase()
+        const tier = String(creds.oauth.rateLimitTier || "").toLowerCase()
+        // Anthropic renamed Max 20x to Ultra. Existing credentials keep the
+        // `claude_max_20x` tier string until the account signs in again, and
+        // newer sign-ins report `ultra` directly.
+        const isUltra = subscription === "ultra" ||
+          (subscription === "max" && /ultra|(^|[^0-9])20x([^0-9]|$)/.test(tier))
+        if (isUltra) {
+          plan = "Ultra"
+        } else {
+          const tierMatch = tier.match(/(\d+)x/)
+          plan = tierMatch ? basePlan + " " + tierMatch[1] + "x" : basePlan
         }
-        plan = basePlan + tierSuffix
       }
     }
 
