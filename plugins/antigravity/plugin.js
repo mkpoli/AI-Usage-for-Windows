@@ -5,16 +5,16 @@
     "~/AppData/Roaming/Antigravity/User/globalStorage/state.vscdb",
     "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb",
   ]
-  var IDE_STATE_DB_CANDIDATES = [
-    "%APPDATA%\\Antigravity IDE\\User\\globalStorage\\state.vscdb",
-    "~/AppData/Roaming/Antigravity IDE/User/globalStorage/state.vscdb",
-    "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb",
-  ]
   var CLOUD_CODE_URLS = [
     "https://daily-cloudcode-pa.googleapis.com",
     "https://cloudcode-pa.googleapis.com",
   ]
   var FETCH_MODELS_PATH = "/v1internal:fetchAvailableModels"
+  var QUOTA_SUMMARY_PATH = "/v1internal:retrieveUserQuotaSummary"
+  var ANTIGRAVITY_PROJECT = "aicode-consumers"
+  var WEEK_MS = 7 * 24 * 60 * 60 * 1000
+  // The quota summary returns the Argon group only to the CLI client shape.
+  var QUOTA_USER_AGENT = "antigravity/cli/1.5.3"
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
   var GOOGLE_CLIENT_SECRET = "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"
@@ -67,35 +67,6 @@
     return null
   }
 
-  function readFieldValues(s, targetField) {
-    var values = []
-    var pos = 0
-    while (pos < s.length) {
-      var tag = readVarint(s, pos)
-      if (!tag) break
-      pos = tag.p
-      var fieldNum = Math.floor(tag.v / 8)
-      var wireType = tag.v % 8
-      if (wireType === 0) {
-        var val = readVarint(s, pos)
-        if (!val) break
-        if (fieldNum === targetField) values.push({ type: 0, value: val.v })
-        pos = val.p
-      } else if (wireType === 2) {
-        var len = readVarint(s, pos)
-        if (!len) break
-        pos = len.p
-        if (fieldNum === targetField) {
-          values.push({ type: 2, data: s.substring(pos, pos + len.v) })
-        }
-        pos += len.v
-      } else {
-        break
-      }
-    }
-    return values
-  }
-
   function readFields(s) {
     var fields = {}
     var pos = 0
@@ -134,16 +105,8 @@
     ]
   }
 
-  function ideStateDbCandidates(ctx) {
-    if (ctx.app && ctx.app.platform === "windows") return IDE_STATE_DB_CANDIDATES
-    return [
-      "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb",
-      "%APPDATA%\\Antigravity IDE\\User\\globalStorage\\state.vscdb",
-      "~/AppData/Roaming/Antigravity IDE/User/globalStorage/state.vscdb",
-    ]
-  }
-
-  function queryStateDbCandidates(ctx, candidates, sql) {
+  function queryStateDb(ctx, sql) {
+    var candidates = stateDbCandidates(ctx)
     var lastError = null
     for (var i = 0; i < candidates.length; i++) {
       try {
@@ -154,10 +117,6 @@
     }
     if (lastError) throw lastError
     return null
-  }
-
-  function queryStateDb(ctx, sql) {
-    return queryStateDbCandidates(ctx, stateDbCandidates(ctx), sql)
   }
 
   function loadApiKey(ctx) {
@@ -200,53 +159,6 @@
       return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
     } catch (e) {
       ctx.host.log.warn("failed to read proto tokens from antigravity DB: " + String(e))
-      return null
-    }
-  }
-
-  // The IDE's sentinel value wraps the token in a base64-encoded protobuf.
-  // Unwrap until the `ya29.` access token surfaces.
-  function unwrapAccessToken(ctx, value) {
-    var token = value
-    for (var i = 0; i < 3; i++) {
-      if (typeof token !== "string" || !token) return null
-      if (token.indexOf("ya29.") === 0) return token
-      var decoded
-      try {
-        decoded = ctx.base64.decode(token)
-      } catch (e) {
-        return null
-      }
-      var field = readFields(decoded)[1]
-      if (!field || field.type !== 2) return null
-      token = field.data
-    }
-    return null
-  }
-
-  // Antigravity IDE keeps one access token in a sentinel protobuf instead of
-  // the app's auth rows. It has no refresh token, so an expired value simply
-  // falls through to the app credentials.
-  function loadIdeAccessToken(ctx) {
-    try {
-      var rows = queryStateDbCandidates(
-        ctx,
-        ideStateDbCandidates(ctx),
-        "SELECT value FROM ItemTable WHERE key = 'antigravityUnifiedStateSync.oauthToken' LIMIT 1"
-      )
-      var parsed = ctx.util.tryParseJson(rows)
-      if (!parsed || !parsed.length || !parsed[0].value) return null
-      var entries = readFieldValues(ctx.base64.decode(parsed[0].value), 1)
-      for (var i = 0; i < entries.length; i++) {
-        if (entries[i].type !== 2) continue
-        var value = readFields(entries[i].data)[2]
-        if (!value || value.type !== 2) continue
-        var token = unwrapAccessToken(ctx, value.data)
-        if (token) return token
-      }
-      return null
-    } catch (e) {
-      ctx.host.log.warn("failed to read Antigravity IDE token: " + String(e))
       return null
     }
   }
@@ -483,6 +395,62 @@
     return null
   }
 
+  function probeQuotaSummary(ctx, token) {
+    for (var i = 0; i < CLOUD_CODE_URLS.length; i++) {
+      try {
+        var resp = ctx.host.http.request({
+          method: "POST",
+          url: CLOUD_CODE_URLS[i] + QUOTA_SUMMARY_PATH,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+            "User-Agent": QUOTA_USER_AGENT,
+          },
+          bodyText: JSON.stringify({ project: ANTIGRAVITY_PROJECT }),
+          timeoutMs: 15000,
+        })
+        if (ctx.util.isAuthStatus(resp.status)) return { _authFailed: true }
+        if (resp.status >= 200 && resp.status < 300) {
+          return ctx.util.tryParseJson(resp.bodyText)
+        }
+      } catch (e) {
+        ctx.host.log.warn("Quota summary request failed (" + CLOUD_CODE_URLS[i] + "): " + String(e))
+      }
+    }
+    return null
+  }
+
+  function argonWeeklyBucket(data) {
+    var groups = data && data.groups
+    if (!Array.isArray(groups)) return null
+    for (var i = 0; i < groups.length; i++) {
+      if (!groups[i] || groups[i].displayName !== "Gemini 4 Argon") continue
+      var buckets = groups[i].buckets
+      if (!Array.isArray(buckets)) return null
+      for (var j = 0; j < buckets.length; j++) {
+        var bucket = buckets[j]
+        if (!bucket || bucket.window !== "weekly") continue
+        if (typeof bucket.remainingFraction !== "number") continue
+        return bucket
+      }
+    }
+    return null
+  }
+
+  function argonLine(ctx, data) {
+    var bucket = argonWeeklyBucket(data)
+    if (!bucket) return null
+    var remaining = Math.max(0, Math.min(1, bucket.remainingFraction))
+    return ctx.line.progress({
+      label: "Gemini 4 Argon",
+      used: Math.round((1 - remaining) * 100),
+      limit: 100,
+      format: { kind: "percent" },
+      resetsAt: ctx.util.toIso(bucket.resetTime),
+      periodDurationMs: WEEK_MS,
+    })
+  }
+
   function parseCloudCodeModels(data) {
     var modelsObj = data && data.models
     if (!modelsObj || typeof modelsObj !== "object") return []
@@ -589,46 +557,53 @@
   function probe(ctx) {
     var apiKey = loadApiKey(ctx)
     var proto = loadProtoTokens(ctx)
-    var ideToken = loadIdeAccessToken(ctx)
 
     var lsResult = probeLs(ctx, apiKey)
     if (lsResult) return lsResult
 
     var tokens = []
-    if (ideToken) tokens.push(ideToken)
-    if (proto && proto.accessToken && proto.accessToken !== ideToken) {
+    if (proto && proto.accessToken) {
       if (!proto.expirySeconds || proto.expirySeconds > Math.floor(Date.now() / 1000)) {
         tokens.push(proto.accessToken)
       }
     }
 
     var cached = loadCachedToken(ctx)
-    if (cached && cached !== (proto && proto.accessToken) && cached !== ideToken) tokens.push(cached)
+    if (cached && cached !== (proto && proto.accessToken)) tokens.push(cached)
 
     if (
       apiKey &&
       apiKey !== (proto && proto.accessToken) &&
-      apiKey !== cached &&
-      apiKey !== ideToken
+      apiKey !== cached
     ) tokens.push(apiKey)
 
     if (tokens.length === 0 && !(proto && proto.refreshToken)) throw "Start Antigravity and try again."
 
     var ccData = null
+    var workingToken = null
     for (var i = 0; i < tokens.length; i++) {
       ccData = probeCloudCode(ctx, tokens[i])
-      if (ccData && !ccData._authFailed) break
+      if (ccData && !ccData._authFailed) {
+        workingToken = tokens[i]
+        break
+      }
       ccData = null
     }
 
     if (!ccData && proto && proto.refreshToken) {
       var refreshed = refreshAccessToken(ctx, proto.refreshToken)
-      if (refreshed) ccData = probeCloudCode(ctx, refreshed)
+      if (refreshed) {
+        ccData = probeCloudCode(ctx, refreshed)
+        if (ccData && !ccData._authFailed) workingToken = refreshed
+      }
     }
 
     if (ccData && !ccData._authFailed) {
       var configs = parseCloudCodeModels(ccData)
       var lines = buildModelLines(ctx, configs)
+      var quotaData = workingToken ? probeQuotaSummary(ctx, workingToken) : null
+      var argon = quotaData && !quotaData._authFailed ? argonLine(ctx, quotaData) : null
+      if (argon) lines.unshift(argon)
       if (lines.length > 0) return { plan: null, lines: lines }
     }
 
