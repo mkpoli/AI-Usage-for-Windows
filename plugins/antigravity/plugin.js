@@ -437,13 +437,17 @@
     "Gemini 4 Argon",
   ]
 
+  function isWeeklyBucket(bucket) {
+    if (bucket.window === "weekly") return true
+    return String(bucket.bucketId || "").toLowerCase().indexOf("weekly") !== -1
+  }
+
   function summaryBucketLabel(group, bucket) {
     var mapped = SUMMARY_BUCKETS[bucket.bucketId]
     if (mapped) return mapped.label
     var groupName =
       group && typeof group.displayName === "string" ? group.displayName.trim() : ""
-    var lowerId = String(bucket.bucketId || "").toLowerCase()
-    var isWeekly = bucket.window === "weekly" || lowerId.indexOf("weekly") !== -1
+    var isWeekly = isWeeklyBucket(bucket)
     var lowerGroup = groupName.toLowerCase()
     if (lowerGroup === "gemini 4 argon") return "Gemini 4 Argon"
     if (lowerGroup.indexOf("gemini") !== -1) return isWeekly ? "Gemini Weekly" : "Gemini Session"
@@ -456,7 +460,7 @@
   function summaryBucketPeriod(bucket) {
     var mapped = SUMMARY_BUCKETS[bucket.bucketId]
     if (mapped) return mapped.periodMs
-    if (bucket.window === "weekly") return WEEK_MS
+    if (isWeeklyBucket(bucket)) return WEEK_MS
     return QUOTA_PERIOD_MS
   }
 

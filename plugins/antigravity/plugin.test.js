@@ -1466,8 +1466,8 @@ describe("antigravity plugin", () => {
                 displayName: "Gemini Models",
                 buckets: [
                   { bucketId: "renamed-5h", window: "5h", remainingFraction: 0.8 },
-                  { bucketId: "renamed-weekly", window: "weekly", remainingFraction: 0.5 },
-                  { bucketId: "renamed-weekly-2", window: "weekly", remainingFraction: 0.3 },
+                  { bucketId: "renamed-weekly", remainingFraction: 0.5 },
+                  { bucketId: "renamed-weekly-2", remainingFraction: 0.3 },
                   {
                     bucketId: "retired-weekly",
                     window: "weekly",
@@ -1506,6 +1506,13 @@ describe("antigravity plugin", () => {
       "Other models",
     ])
     expect(result.lines.map((line) => line.used)).toEqual([70, 20, 25, 10, 10])
+    expect(result.lines.map((line) => line.periodDurationMs)).toEqual([
+      604800000,
+      18000000,
+      18000000,
+      604800000,
+      604800000,
+    ])
   })
 
   it("Cloud Code drops GPT-OSS, labels Gemini 4 Argon, and keeps other models", async () => {
