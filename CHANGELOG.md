@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.4 - 2026-11-17
+
+### Fixed
+
+- Antigravity reads the shared Gemini and Claude/GPT quota pools from `retrieveUserQuotaSummary`. Gemini shows the weekly limit instead of per-model five-hour rows stuck at 0%, Claude rows use the correct five-hour reset beside their weekly window, and the tray follows the same rows.
+
 ## v0.9.3 - 2026-11-10
 
 ### Added
