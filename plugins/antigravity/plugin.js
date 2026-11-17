@@ -609,13 +609,13 @@
 
   function probeToken(ctx, token) {
     var quotaData = probeQuotaSummary(ctx, token)
-    if (quotaData && quotaData._authFailed) return null
-    if (quotaData) {
+    if (quotaData && !quotaData._authFailed) {
       var summaryLines = parseQuotaSummaryLines(ctx, quotaData)
       if (summaryLines.length > 0) return summaryLines
     }
 
-    // Older builds expose only per-model quotas; keep them as a last resort.
+    // Older builds expose only per-model quotas. A summary that rejects the
+    // project can still fall through to them.
     var ccData = probeCloudCode(ctx, token)
     if (!ccData || ccData._authFailed) return null
     return buildModelLines(ctx, parseCloudCodeModels(ccData))

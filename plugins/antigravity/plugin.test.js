@@ -1450,6 +1450,32 @@ describe("antigravity plugin", () => {
     expect(result.lines[4].resetsAt).toBe("2026-11-15T17:47:24.000Z")
   })
 
+  it("falls back to per-model quotas when the summary rejects the project", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test", "1//r", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("retrieveUserQuotaSummary")) {
+        return { status: 403, bodyText: '{"error":"forbidden"}' }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.map((line) => line.label)).toEqual([
+      "Gemini 3.1 Pro (High)",
+      "Claude Sonnet 4.5",
+    ])
+  })
+
   it("labels renamed summary buckets by group and window", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
