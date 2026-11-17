@@ -10,7 +10,7 @@ AI Usage for Windows reads Antigravity through local SQLite credentials and Goog
 - **Primary Windows path:** `%APPDATA%\Antigravity\User\globalStorage\state.vscdb`
 - **Fallback API:** `https://cloudcode-pa.googleapis.com`
 - **Auth:** Google OAuth access/refresh tokens from Antigravity local state
-- **Quota:** per-model remaining fraction plus the Gemini 4 Argon weekly bucket
+- **Quota:** shared Gemini and Claude/GPT pools, each with five-hour and weekly windows, plus the separate Gemini 4 Argon weekly bucket
 - **Default:** enabled when bundled and queryable
 
 ## Data Sources
@@ -39,7 +39,13 @@ body: {"project":"aicode-consumers"}
 
 The `aicode-consumers` project and the `antigravity/cli/1.5.3` user agent are what make the response include the Gemini groups and the `Gemini 4 Argon` weekly bucket. A generic `antigravity` user agent returns only the Claude and GPT group.
 
-The Argon bucket renders as `Gemini 4 Argon`, percent used over a seven-day window. The remaining per-model rows still come from `fetchAvailableModels`.
+The response groups models into shared pools instead of reporting a meaningful per-model quota. Each pool has a five-hour and a weekly bucket:
+
+- `Gemini Models`: `gemini-5h`, `gemini-weekly`
+- `Claude and GPT models`: `3p-5h`, `3p-weekly`
+- `Gemini 4 Argon`: `gemini-argon-wtu-weekly`
+
+The per-model `quotaInfo` from `fetchAvailableModels` reports the five-hour window only and can stay at its full value while the shared weekly bucket is mostly spent. AI Usage therefore renders the summary buckets and keeps the per-model response as a fallback for older builds. The bucket IDs and grouping match the format documented by other Antigravity clients ([OpenUsage](https://github.com/robinebers/openusage/blob/26132ff48dd78eb2c4a9498e40424e6365f99fec/docs/providers/antigravity.md)).
 
 ## Token Refresh
 
@@ -65,18 +71,14 @@ When no language-server endpoint is available, the plugin calls:
 POST https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels
 ```
 
-The response includes provisioned models and quota information. AI Usage filters out internal, retired, and non-user-facing models, then renders each visible model quota bucket separately.
-
-GPT-OSS rows are filtered from both the API and language-server data. Antigravity is retiring the model, and it shares the Claude quota pool.
+The response includes provisioned models and per-model quota information. AI Usage uses it only when the quota summary returns no buckets. GPT-OSS rows are filtered from both the API and language-server data. Antigravity is retiring the model, and it shares the Claude quota pool.
 
 ## Output Mapping
 
 - **Plan:** best-effort account plan name when available
-- **Gemini 4 Argon:** the Argon weekly bucket renders first as `Gemini 4 Argon`, percent used, seven-day reset
-- **Model lines:** each visible Antigravity model quota bucket is shown as percent used. Gemini buckets sort newest first, including labels such as `Gemini 4 Argon (High)`, `Gemini 4 Argon (Low)`, `Gemini 3.8 Flash`, and `Gemini 3.1 Pro (High)`. Claude buckets include `Claude Sonnet 5.5 (Thinking)` and `Claude Opus 5.5 (Thinking)`.
-- **Fallback label:** a `gemini-4-argon` model without a display name renders as `Gemini 4 Argon`; a `-high`, `-medium`, or `-low` suffix becomes the matching `(High)`, `(Medium)`, or `(Low)` label
-- **Overview and tray:** the Overview scope declares `Gemini 4 Argon`, its High and Low buckets, `Gemini 3.8 Flash (High)`, and the current `Gemini 3.5 Flash Lite`, `Gemini 3 Flash`, and `Gemini 3.1 Flash` rows. The tray primary uses the first available Gemini 4 row, then `Gemini 3.5 Flash Lite`.
-- Duplicate model labels are collapsed to the bucket with the lowest remaining fraction
+- **Quota rows:** one row per shared pool and window, in the order `Gemini Weekly`, `Gemini Session`, `Claude and GPT Weekly`, `Claude and GPT Session`, `Gemini 4 Argon`. Percent used comes from the bucket's remaining fraction. Five-hour rows use a five-hour period for pace and reset labels; weekly rows use seven days.
+- **Overview and tray:** the Overview scope declares the same five rows. The tray primary uses `Gemini Weekly`, then `Gemini Session`, then `Gemini 4 Argon`.
+- Duplicate labels are collapsed to the bucket with the highest usage
 - **Account:** account email/name when available
 
 ## Limitations

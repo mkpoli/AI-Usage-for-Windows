@@ -300,12 +300,22 @@ describe("antigravity plugin", () => {
     expect(highLines[0].used).toBe(20)
   })
 
-  it("declares Gemini 4 and leaves GPT-OSS out of the overview", () => {
+  it("declares the shared pools and leaves GPT-OSS out of the overview", () => {
     const manifest = JSON.parse(readFileSync("plugins/antigravity/plugin.json", "utf8"))
     const labels = manifest.lines.map((line) => line.label)
-    expect(labels).toContain("Gemini 4 Argon")
-    expect(labels).toContain("Gemini 4 Argon (High)")
-    expect(labels).toContain("Gemini 3.5 Flash Lite")
+    expect(labels).toEqual([
+      "Gemini Weekly",
+      "Gemini Session",
+      "Claude and GPT Weekly",
+      "Claude and GPT Session",
+      "Gemini 4 Argon",
+    ])
+    expect(
+      manifest.lines
+        .filter((line) => line.primaryOrder !== undefined)
+        .sort((a, b) => a.primaryOrder - b.primaryOrder)
+        .map((line) => line.label)
+    ).toEqual(["Gemini Weekly", "Gemini Session", "Gemini 4 Argon"])
     expect(labels.some((label) => /gpt-oss/i.test(label))).toBe(false)
   })
 
@@ -1338,7 +1348,7 @@ describe("antigravity plugin", () => {
     expect(labels).toEqual(["Claude Sonnet 4.5"])
   })
 
-  it("adds the Gemini 4 Argon weekly quota from the quota summary", async () => {
+  it("renders the shared Gemini and Claude pools from the quota summary", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test", "1//r", futureExpiry))
@@ -1356,11 +1366,6 @@ describe("antigravity plugin", () => {
                 model: "gemini-3.5-flash-lite",
                 quotaInfo: { remainingFraction: 0.99, resetTime: "2026-11-09T18:51:36Z" },
               },
-              "gpt-oss-120b-medium": {
-                displayName: "GPT-OSS 120B (Medium)",
-                model: "gpt-oss-120b-medium",
-                quotaInfo: { remainingFraction: 1, resetTime: "2026-11-16T04:48:45Z" },
-              },
             },
           }),
         }
@@ -1371,6 +1376,40 @@ describe("antigravity plugin", () => {
           status: 200,
           bodyText: JSON.stringify({
             groups: [
+              {
+                displayName: "Gemini Models",
+                buckets: [
+                  {
+                    bucketId: "gemini-weekly",
+                    window: "weekly",
+                    remainingFraction: 0.40167132,
+                    resetTime: "2026-11-21T12:08:35Z",
+                  },
+                  {
+                    bucketId: "gemini-5h",
+                    window: "5h",
+                    remainingFraction: 1,
+                    resetTime: "2026-11-17T14:48:02Z",
+                  },
+                ],
+              },
+              {
+                displayName: "Claude and GPT models",
+                buckets: [
+                  {
+                    bucketId: "3p-weekly",
+                    window: "weekly",
+                    remainingFraction: 0.2986256,
+                    resetTime: "2026-11-21T12:22:37Z",
+                  },
+                  {
+                    bucketId: "3p-5h",
+                    window: "5h",
+                    remainingFraction: 0.8271056,
+                    resetTime: "2026-11-17T12:15:41Z",
+                  },
+                ],
+              },
               {
                 displayName: "Gemini 4 Argon",
                 buckets: [
@@ -1391,16 +1430,115 @@ describe("antigravity plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const labels = result.lines.map((l) => l.label)
 
-    expect(labels).toEqual(["Gemini 4 Argon", "Gemini 3.5 Flash Lite"])
-    expect(result.lines[0]).toMatchObject({
-      type: "progress",
-      used: 44,
-      limit: 100,
-      periodDurationMs: 604800000,
+    expect(result.lines.map((line) => line.label)).toEqual([
+      "Gemini Weekly",
+      "Gemini Session",
+      "Claude and GPT Weekly",
+      "Claude and GPT Session",
+      "Gemini 4 Argon",
+    ])
+    expect(result.lines.map((line) => line.used)).toEqual([60, 0, 70, 17, 44])
+    expect(result.lines.map((line) => line.periodDurationMs)).toEqual([
+      604800000,
+      18000000,
+      604800000,
+      18000000,
+      604800000,
+    ])
+    expect(result.lines[0].resetsAt).toBe("2026-11-21T12:08:35.000Z")
+    expect(result.lines[4].resetsAt).toBe("2026-11-15T17:47:24.000Z")
+  })
+
+  it("falls back to per-model quotas when the summary rejects the project", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test", "1//r", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("retrieveUserQuotaSummary")) {
+        return { status: 403, bodyText: '{"error":"forbidden"}' }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
     })
-    expect(result.lines[0].resetsAt).toBe("2026-11-15T17:47:24.000Z")
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.map((line) => line.label)).toEqual([
+      "Gemini 3.1 Pro (High)",
+      "Claude Sonnet 4.5",
+    ])
+  })
+
+  it("labels renamed summary buckets by group and window", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test", "1//r", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("retrieveUserQuotaSummary")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            groups: [
+              {
+                displayName: "Gemini Models",
+                buckets: [
+                  { bucketId: "renamed-5h", window: "5h", remainingFraction: 0.8 },
+                  { bucketId: "renamed-weekly", remainingFraction: 0.5 },
+                  { bucketId: "renamed-weekly-2", remainingFraction: 0.3 },
+                  {
+                    bucketId: "retired-weekly",
+                    window: "weekly",
+                    remainingFraction: 0.1,
+                    disabled: true,
+                  },
+                ],
+              },
+              {
+                displayName: "Claude and GPT models",
+                buckets: [{ bucketId: "renamed-3p", window: "5h", remainingFraction: 0.75 }],
+              },
+              {
+                displayName: "Gemini 4 Argon",
+                buckets: [{ bucketId: "renamed-argon", window: "weekly", remainingFraction: 0.9 }],
+              },
+              {
+                displayName: "Other models",
+                buckets: [{ bucketId: "renamed-other", window: "weekly", remainingFraction: 0.9 }],
+              },
+            ],
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.map((line) => line.label)).toEqual([
+      "Gemini Weekly",
+      "Gemini Session",
+      "Claude and GPT Session",
+      "Gemini 4 Argon",
+      "Other models",
+    ])
+    expect(result.lines.map((line) => line.used)).toEqual([70, 20, 25, 10, 10])
+    expect(result.lines.map((line) => line.periodDurationMs)).toEqual([
+      604800000,
+      18000000,
+      18000000,
+      604800000,
+      604800000,
+    ])
   })
 
   it("Cloud Code drops GPT-OSS, labels Gemini 4 Argon, and keeps other models", async () => {
