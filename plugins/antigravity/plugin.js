@@ -13,7 +13,7 @@
   var QUOTA_SUMMARY_PATH = "/v1internal:retrieveUserQuotaSummary"
   var ANTIGRAVITY_PROJECT = "aicode-consumers"
   var WEEK_MS = 7 * 24 * 60 * 60 * 1000
-  // The quota summary returns the Argon group only to the CLI client shape.
+  // Only the CLI client shape gets the shared Gemini group and the Argon bucket.
   var QUOTA_USER_AGENT = "antigravity/cli/1.5.3"
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
@@ -420,35 +420,84 @@
     return null
   }
 
-  function argonWeeklyBucket(data) {
-    var groups = data && data.groups
-    if (!Array.isArray(groups)) return null
-    for (var i = 0; i < groups.length; i++) {
-      if (!groups[i] || groups[i].displayName !== "Gemini 4 Argon") continue
-      var buckets = groups[i].buckets
-      if (!Array.isArray(buckets)) return null
-      for (var j = 0; j < buckets.length; j++) {
-        var bucket = buckets[j]
-        if (!bucket || bucket.window !== "weekly") continue
-        if (typeof bucket.remainingFraction !== "number") continue
-        return bucket
-      }
+  // The quota summary groups every model into a shared pool. Each pool reports
+  // one weekly and one five-hour bucket; Argon has its own weekly bucket.
+  var SUMMARY_BUCKETS = {
+    "gemini-weekly": { label: "Gemini Weekly", periodMs: WEEK_MS },
+    "gemini-5h": { label: "Gemini Session", periodMs: QUOTA_PERIOD_MS },
+    "3p-weekly": { label: "Claude and GPT Weekly", periodMs: WEEK_MS },
+    "3p-5h": { label: "Claude and GPT Session", periodMs: QUOTA_PERIOD_MS },
+    "gemini-argon-wtu-weekly": { label: "Gemini 4 Argon", periodMs: WEEK_MS },
+  }
+  var SUMMARY_LABEL_ORDER = [
+    "Gemini Weekly",
+    "Gemini Session",
+    "Claude and GPT Weekly",
+    "Claude and GPT Session",
+    "Gemini 4 Argon",
+  ]
+
+  function summaryBucketLabel(group, bucket) {
+    var mapped = SUMMARY_BUCKETS[bucket.bucketId]
+    if (mapped) return mapped.label
+    var groupName =
+      group && typeof group.displayName === "string" ? group.displayName.trim() : ""
+    var lowerId = String(bucket.bucketId || "").toLowerCase()
+    var isWeekly = bucket.window === "weekly" || lowerId.indexOf("weekly") !== -1
+    var lowerGroup = groupName.toLowerCase()
+    if (lowerGroup === "gemini 4 argon") return "Gemini 4 Argon"
+    if (lowerGroup.indexOf("gemini") !== -1) return isWeekly ? "Gemini Weekly" : "Gemini Session"
+    if (lowerGroup.indexOf("claude") !== -1) {
+      return isWeekly ? "Claude and GPT Weekly" : "Claude and GPT Session"
     }
-    return null
+    return groupName || null
   }
 
-  function argonLine(ctx, data) {
-    var bucket = argonWeeklyBucket(data)
-    if (!bucket) return null
-    var remaining = Math.max(0, Math.min(1, bucket.remainingFraction))
-    return ctx.line.progress({
-      label: "Gemini 4 Argon",
-      used: Math.round((1 - remaining) * 100),
-      limit: 100,
-      format: { kind: "percent" },
-      resetsAt: ctx.util.toIso(bucket.resetTime),
-      periodDurationMs: WEEK_MS,
-    })
+  function summaryBucketPeriod(bucket) {
+    var mapped = SUMMARY_BUCKETS[bucket.bucketId]
+    if (mapped) return mapped.periodMs
+    if (bucket.window === "weekly") return WEEK_MS
+    return QUOTA_PERIOD_MS
+  }
+
+  function parseQuotaSummaryLines(ctx, data) {
+    var groups = data && data.groups
+    if (!Array.isArray(groups)) return []
+
+    var byLabel = {}
+    for (var i = 0; i < groups.length; i++) {
+      var group = groups[i]
+      var buckets = group && group.buckets
+      if (!Array.isArray(buckets)) continue
+      for (var j = 0; j < buckets.length; j++) {
+        var bucket = buckets[j]
+        if (!bucket || typeof bucket.remainingFraction !== "number") continue
+        if (bucket.disabled === true) continue
+        var label = summaryBucketLabel(group, bucket)
+        if (!label) continue
+        var remaining = Math.max(0, Math.min(1, bucket.remainingFraction))
+        var line = ctx.line.progress({
+          label: label,
+          used: Math.round((1 - remaining) * 100),
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: ctx.util.toIso(bucket.resetTime),
+          periodDurationMs: summaryBucketPeriod(bucket),
+        })
+        var existing = byLabel[label]
+        if (!existing || line.used > existing.used) byLabel[label] = line
+      }
+    }
+
+    return Object.keys(byLabel)
+      .sort(function (a, b) {
+        var ai = SUMMARY_LABEL_ORDER.indexOf(a)
+        var bi = SUMMARY_LABEL_ORDER.indexOf(b)
+        if (ai === -1) ai = SUMMARY_LABEL_ORDER.length
+        if (bi === -1) bi = SUMMARY_LABEL_ORDER.length
+        return ai === bi ? (a < b ? -1 : a > b ? 1 : 0) : ai - bi
+      })
+      .map(function (label) { return byLabel[label] })
   }
 
   function parseCloudCodeModels(data) {
@@ -554,6 +603,20 @@
 
   // --- Probe ---
 
+  function probeToken(ctx, token) {
+    var quotaData = probeQuotaSummary(ctx, token)
+    if (quotaData && quotaData._authFailed) return null
+    if (quotaData) {
+      var summaryLines = parseQuotaSummaryLines(ctx, quotaData)
+      if (summaryLines.length > 0) return summaryLines
+    }
+
+    // Older builds expose only per-model quotas; keep them as a last resort.
+    var ccData = probeCloudCode(ctx, token)
+    if (!ccData || ccData._authFailed) return null
+    return buildModelLines(ctx, parseCloudCodeModels(ccData))
+  }
+
   function probe(ctx) {
     var apiKey = loadApiKey(ctx)
     var proto = loadProtoTokens(ctx)
@@ -579,33 +642,18 @@
 
     if (tokens.length === 0 && !(proto && proto.refreshToken)) throw "Start Antigravity and try again."
 
-    var ccData = null
-    var workingToken = null
+    var lines = null
     for (var i = 0; i < tokens.length; i++) {
-      ccData = probeCloudCode(ctx, tokens[i])
-      if (ccData && !ccData._authFailed) {
-        workingToken = tokens[i]
-        break
-      }
-      ccData = null
+      lines = probeToken(ctx, tokens[i])
+      if (lines && lines.length > 0) break
     }
 
-    if (!ccData && proto && proto.refreshToken) {
+    if ((!lines || lines.length === 0) && proto && proto.refreshToken) {
       var refreshed = refreshAccessToken(ctx, proto.refreshToken)
-      if (refreshed) {
-        ccData = probeCloudCode(ctx, refreshed)
-        if (ccData && !ccData._authFailed) workingToken = refreshed
-      }
+      if (refreshed) lines = probeToken(ctx, refreshed)
     }
 
-    if (ccData && !ccData._authFailed) {
-      var configs = parseCloudCodeModels(ccData)
-      var lines = buildModelLines(ctx, configs)
-      var quotaData = workingToken ? probeQuotaSummary(ctx, workingToken) : null
-      var argon = quotaData && !quotaData._authFailed ? argonLine(ctx, quotaData) : null
-      if (argon) lines.unshift(argon)
-      if (lines.length > 0) return { plan: null, lines: lines }
-    }
+    if (lines && lines.length > 0) return { plan: null, lines: lines }
 
     throw "Start Antigravity and try again."
   }
